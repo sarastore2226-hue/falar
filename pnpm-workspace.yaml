@@ -3,3 +3,7 @@ allowBuilds:
   '@prisma/engines': true
   prisma: true
   unrs-resolver: true
+
+overrides:
+  '@types/react': 19.0.10
+  '@types/react-dom': 19.0.4
