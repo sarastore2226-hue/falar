@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ["*.monkeycode-ai.live"],
   eslint: {
     ignoreDuringBuilds: true, // تجاهل أخطاء ESLint أثناء البناء
   },

@@ -16,6 +16,38 @@ export default function CategoriesManagement() {
     kind: "جنس", // القيمة الافتراضية
     sub: "",
   });
+  const [uploading, setUploading] = useState(false);
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/categories/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setFormData((prev) => ({ ...prev, image: result.image.url }));
+        alert("تم رفع الصورة بنجاح");
+      } else {
+        alert(result.error || "فشل في رفع الصورة");
+      }
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      alert("فشل في رفع الصورة");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
 
   useEffect(() => {
     fetchCategories();
@@ -307,8 +339,59 @@ export default function CategoriesManagement() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      رابط الصورة
+                      صورة التصنيف
                     </label>
+
+                    {/* زر رفع الصورة من الجهاز */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <label className="flex-1 cursor-pointer">
+                        <span className={`flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed rounded-lg text-sm font-medium transition-colors ${
+                          uploading
+                            ? "border-blue-300 bg-blue-50 text-blue-500"
+                            : "border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                        }`}>
+                          {uploading ? (
+                            <>
+                              <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></span>
+                              جاري الرفع...
+                            </>
+                          ) : (
+                            <>
+                              <span>📤</span>
+                              رفع صورة من الجهاز
+                            </>
+                          )}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          disabled={uploading}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+
+                    {/* معاينة الصورة المرفوعة */}
+                    {formData.image && (
+                      <div className="mb-2 flex items-center gap-2">
+                        <img
+                          src={formData.image}
+                          alt="معاينة الصورة"
+                          className="w-16 h-16 rounded-lg object-cover border border-gray-200"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormData({ ...formData, image: "" })
+                          }
+                          className="text-red-600 hover:text-red-800 text-xs bg-red-50 px-2 py-1 rounded"
+                        >
+                          إزالة الصورة
+                        </button>
+                      </div>
+                    )}
+
                     <input
                       type="url"
                       value={formData.image}
@@ -319,9 +402,9 @@ export default function CategoriesManagement() {
                       placeholder="https://example.com/image.jpg"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      {formData.kind === "خلفية" 
-                        ? "رابط صورة البانر (الهيرو) الرئيسية" 
-                        : "رابط أيقونة أو صورة التصنيف"}
+                      {formData.kind === "خلفية"
+                        ? "ارفع صورة البانر (الهيرو) الرئيسية من جهازك أو الصق رابطها"
+                        : "ارفع أيقونة أو صورة التصنيف من جهازك أو الصق رابطها"}
                     </p>
                   </div>
 
