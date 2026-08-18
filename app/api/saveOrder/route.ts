@@ -21,6 +21,14 @@ interface OrderRequest {
   total_price: number;
 }
 
+// رسالة خطأ واضحة عندما لا تتوفر كمية كافية
+class InsufficientStockError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InsufficientStockError";
+  }
+}
+
 export async function POST(request: Request) {
   try {
     // 1. Parse the incoming order data from the request body
@@ -53,6 +61,36 @@ export async function POST(request: Request) {
 
     // 3. Use a Prisma transaction to save everything safely
     await prisma.$transaction(async (tx) => {
+      // 3.1 التحقق من المخزون وتنقيصه أولاً (قبل إنشاء الطلب)
+      for (const item of items) {
+        const itemCode = item.item_code?.trim();
+        if (!itemCode) continue;
+
+        // العثور على المنتج المطابق
+        const product = await tx.products.findFirst({
+          where: { item_code: itemCode },
+        });
+
+        if (!product) continue;
+
+        const availableQty = Number(product.cur_qty) || 0;
+
+        // التحقق من توفر الكمية المطلوبة
+        if (availableQty < item.quantity) {
+          throw new InsufficientStockError(
+            `الكمية المتاحة غير كافية للمنتج "${item.product}" — المطلوب: ${item.quantity}، المتاح: ${availableQty}`
+          );
+        }
+
+        // تنقيص المخزون
+        await tx.products.update({
+          where: { unique_id: product.unique_id },
+          data: {
+            cur_qty: availableQty - item.quantity,
+          },
+        });
+      }
+
       // Create the main order record
       await tx.orders.create({
         data: {
@@ -87,6 +125,13 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("Error in saveOrder API:", error);
+    // إرجاع رسالة واضحة للمستخدم عند نقص المخزون
+    if (error instanceof InsufficientStockError) {
+      return NextResponse.json(
+        { success: false, error: error.message },
+        { status: 400 }
+      );
+    }
     // In case of an error, send a generic error message
     return NextResponse.json(
       { success: false, error: "فشل في حفظ الطلب." },

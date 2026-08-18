@@ -145,3 +145,78 @@ export async function GET(
     );
   }
 }
+
+// PUT - تحديث منتج وكل نسخه (الألوان والمقاسات) حسب master_code
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const body = await request.json();
+
+    // 1. نحدد الـ master_code: إما من المسار مباشرة أو من جسم الطلب
+    const masterCode = body.master_code || id;
+
+    // 2. نجلب كل النسخ التابعة لهذا الكود الرئيسي
+    const allVariants = await prisma.products.findMany({
+      where: { master_code: id },
+    });
+
+    if (allVariants.length === 0) {
+      return NextResponse.json(
+        { success: false, error: "المنتج غير موجود" },
+        { status: 404 }
+      );
+    }
+
+    // 3. البيانات المشتركة التي تُطبّق على كل النسخ
+    const sharedData: any = {
+      item_name: body.item_name,
+      out_price: parseFloat(body.out_price) || 0,
+      group_name: body.group_name,
+      kind_name: body.kind_name,
+    };
+
+    if (masterCode) sharedData.master_code = masterCode;
+
+    // 4. تحديث كل النسخ (البيانات المشتركة)
+    await prisma.products.updateMany({
+      where: { master_code: id },
+      data: sharedData,
+    });
+
+    // 5. تحديث النسخة المحددة (اللون/المقاس/الكود/الكمية/الصورة)
+    // نبحث عن السجل المطابق للكود المرسل أو أول نسخة
+    const targetVariant =
+      allVariants.find(
+        (v) => body.item_code && v.item_code === body.item_code
+      ) ||
+      allVariants.find((v) => v.color === body.color && v.size === body.size) ||
+      allVariants[0];
+
+    if (targetVariant) {
+      await prisma.products.update({
+        where: { unique_id: targetVariant.unique_id },
+        data: {
+          item_code: body.item_code || targetVariant.item_code,
+          color: body.color || targetVariant.color,
+          size: body.size || targetVariant.size,
+          cur_qty: parseInt(body.cur_qty) || 0,
+          images: body.images || targetVariant.images,
+        },
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "تم تحديث المنتج بنجاح",
+    });
+  } catch (error) {
+    console.error("❌ Error updating product:", error);
+    return NextResponse.json(
+      { success: false, error: "فشل في تحديث المنتج" },
+      { status: 500 }
+    );
+  }
+}

@@ -64,6 +64,12 @@ export default function UploadDashboard() {
     totalPages: 1,
   });
 
+  // --- State: Cleanup ---
+  const [showCleanupModal, setShowCleanupModal] = useState(false);
+  const [cleanupConfirmText, setCleanupConfirmText] = useState("");
+  const [isCleaning, setIsCleaning] = useState(false);
+  const [cleanupReport, setCleanupReport] = useState(null);
+
   // ==========================================
   // Helper Functions
   // ==========================================
@@ -398,6 +404,39 @@ export default function UploadDashboard() {
       addToast("حدث خطأ في الاتصال", "error");
     } finally {
       setLoadingActionId(null);
+    }
+  };
+
+  // تنظيف الصور اليتيمة من مستودع R2
+  const handleCleanup = async () => {
+    if (cleanupConfirmText.trim() !== "نظف") {
+      addToast("اكتب كلمة تأكيد بشكل صحيح", "error");
+      return;
+    }
+
+    setIsCleaning(true);
+    try {
+      const res = await fetch("/api/images/cleanup", {
+        method: "POST",
+      });
+
+      const result = await res.json();
+
+      if (result.success) {
+        setCleanupReport(result.report);
+        addToast(result.message, "success");
+        setShowCleanupModal(false);
+        setCleanupConfirmText("");
+        fetchProducts(true);
+      } else {
+        addToast(result.error || "فشل تنظيف الصور", "error");
+        setShowCleanupModal(false);
+        setCleanupConfirmText("");
+      }
+    } catch (error) {
+      addToast("حدث خطأ في الاتصال", "error");
+    } finally {
+      setIsCleaning(false);
     }
   };
 
@@ -754,6 +793,16 @@ export default function UploadDashboard() {
                   >
                     ❌ بدون صورة
                   </button>
+                  <button
+                    onClick={() => {
+                      setCleanupReport(null);
+                      setCleanupConfirmText("");
+                      setShowCleanupModal(true);
+                    }}
+                    className="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition-colors"
+                  >
+                    🧹 تنظيف الصور
+                  </button>
                 </div>
               </div>
             </div>
@@ -961,6 +1010,79 @@ export default function UploadDashboard() {
                 </p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ======================= CLEANUP MODAL ======================= */}
+        {showCleanupModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fadeIn">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <span className="w-10 h-10 bg-red-100 text-red-600 rounded-full flex items-center justify-center text-lg">
+                    🧹
+                  </span>
+                  تنظيف الصور
+                </h3>
+                <button
+                  onClick={() => setShowCleanupModal(false)}
+                  disabled={isCleaning}
+                  className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
+                <p className="text-sm text-red-800 font-medium mb-2">
+                  ⚠️ تحذير: هذا الإجراء سيقوم بحذف جميع الصور في مستودع Cloudflare
+                  R2 التي لا يستخدمها أي منتج أو تصنيف أو شعار في المتجر.
+                </p>
+                <p className="text-xs text-red-600">
+                  لن يتم حذف صور المنتجات الظاهرة أو المستخدمة حالياً.
+                </p>
+              </div>
+
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                اكتب كلمة <span className="font-bold text-red-600">نظف</span> للتأكيد
+              </label>
+              <input
+                type="text"
+                value={cleanupConfirmText}
+                onChange={(e) => setCleanupConfirmText(e.target.value)}
+                disabled={isCleaning}
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent mb-4 text-center text-lg font-bold"
+                placeholder="نظف"
+              />
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleCleanup}
+                  disabled={isCleaning || cleanupConfirmText.trim() !== "نظف"}
+                  className={`flex-1 px-4 py-3 rounded-xl font-semibold text-white transition-all ${
+                    isCleaning || cleanupConfirmText.trim() !== "نظف"
+                      ? "bg-gray-300 cursor-not-allowed"
+                      : "bg-red-600 hover:bg-red-700"
+                  }`}
+                >
+                  {isCleaning ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></span>
+                      جاري التنظيف...
+                    </span>
+                  ) : (
+                    "نظف الآن"
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowCleanupModal(false)}
+                  disabled={isCleaning}
+                  className="flex-1 px-4 py-3 rounded-xl font-semibold bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </main>
