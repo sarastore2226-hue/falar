@@ -9,6 +9,7 @@ export default function OrdersTable({
   onPrint,
   onExport,
   onStatusChange,
+  onCancelOrder,
   currentUser,
 }) {
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -177,6 +178,22 @@ export default function OrdersTable({
                       >
                         👁️ عرض التفاصيل
                       </button>
+                      {order.status === "جاري" && (
+                        <button
+                          onClick={() => {
+                            if (
+                              confirm(
+                                "هل أنت متأكد من إلغاء هذا الطلب؟ لا يمكن التراجع عن هذا الإجراء."
+                              )
+                            ) {
+                              onCancelOrder(order.id);
+                            }
+                          }}
+                          className="bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700 transition-colors text-xs flex items-center gap-1"
+                        >
+                          ❌ إلغاء الطلب
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

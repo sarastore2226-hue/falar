@@ -246,6 +246,44 @@ export default function OrdersManagement() {
     }
   };
 
+  // ✅ إلغاء الطلب (فقط إذا كانت حالته جاري)
+  const handleCancelOrder = async (orderId) => {
+    if (!confirm("هل أنت متأكد من إلغاء هذا الطلب؟ لا يمكن التراجع عن هذا الإجراء.")) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/orders/status", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          orderId,
+          status: "ملغي",
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert("✅ تم إلغاء الطلب بنجاح");
+
+        // ✅ تحديث فوري للواجهة
+        setOrders((prevOrders) =>
+          prevOrders.map((order) =>
+            order.id === orderId ? { ...order, status: "ملغي" } : order
+          )
+        );
+      } else {
+        alert("❌ فشل في إلغاء الطلب: " + result.error);
+      }
+    } catch (error) {
+      console.error("❌ خطأ في الاتصال:", error);
+      alert("❌ خطأ في الاتصال");
+    }
+  };
+
   // ✅ تصفية الطلبات - محدث
   useEffect(() => {
     let filtered = orders;
@@ -367,6 +405,7 @@ export default function OrdersManagement() {
                 <option value="">جميع الحالات</option>
                 <option value="جاري">جاري</option>
                 <option value="تم">تم</option>
+                <option value="ملغي">ملغي</option>
               </select>
             </div>
           </div>
@@ -378,6 +417,7 @@ export default function OrdersManagement() {
           onPrint={handlePrint}
           onExport={handleExport}
           onStatusChange={handleStatusChange}
+          onCancelOrder={handleCancelOrder}
           currentUser={user}
           onRefresh={forceRefresh} // ✅ تمرير دالة التحديث
         />

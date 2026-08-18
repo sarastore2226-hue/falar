@@ -14,6 +14,8 @@ export default function Dashboard() {
     totalUsers: 0,
     totalOrders: 0,
     totalRevenue: 0,
+    pendingOrders: 0,
+    completedOrders: 0,
     productsWithImages: 0,
     productsWithoutImages: 0,
     categoriesCount: 0,
@@ -57,13 +59,14 @@ export default function Dashboard() {
     try {
       // جلب إحصائيات حقيقية
       // ✅ تمت الإضافة: جلب عدد الزوار ضمن الـ Promise
-      const [productsRes, usersRes, imagesStatsRes, categoriesRes, visitorsRes] =
+      const [productsRes, usersRes, imagesStatsRes, categoriesRes, visitorsRes, ordersRes] =
         await Promise.all([
           fetch("/api/products"),
           fetch("/api/users"),
           fetch("/api/match-images"), // جلب إحصائيات الصور
           fetch("/api/categories"), // جلب التصنيفات
           fetch("/api/visitors"), // ✅ جلب عدد الزوار
+          fetch("/api/orders"), // ✅ جلب الطلبات
         ]);
 
       const productsData = await productsRes.json();
@@ -74,6 +77,20 @@ export default function Dashboard() {
       const categoriesData = categoriesRes.ok ? await categoriesRes.json() : [];
       // ✅ معالجة بيانات الزوار
       const visitorsData = visitorsRes.ok ? await visitorsRes.json() : { total: 0 };
+      // ✅ جلب الطلبات وحساب العدد والإيرادات الفعليين
+      const ordersData = ordersRes.ok ? await ordersRes.json() : [];
+      const ordersList = Array.isArray(ordersData) ? ordersData : [];
+      const totalOrders = ordersList.length;
+      const totalRevenue = ordersList.reduce(
+        (sum, order) => sum + (Number(order.total_price) || 0),
+        0
+      );
+      const pendingOrders = ordersList.filter(
+        (order) => order.status === "جاري"
+      ).length;
+      const completedOrders = ordersList.filter(
+        (order) => order.status === "تم"
+      ).length;
 
       const products = productsData.products || [];
       const productsWithImages = products.filter((p) => p.images).length;
@@ -81,8 +98,10 @@ export default function Dashboard() {
       setStats({
         totalProducts: products.length,
         totalUsers: usersData?.length || 0,
-        totalOrders: 0,
-        totalRevenue: 0,
+        totalOrders: totalOrders,
+        totalRevenue: totalRevenue,
+        pendingOrders: pendingOrders,
+        completedOrders: completedOrders,
         productsWithImages: productsWithImages,
         productsWithoutImages: products.length - productsWithImages,
         categoriesCount: categoriesData.length,
@@ -109,6 +128,28 @@ export default function Dashboard() {
         color: "from-orange-500 to-orange-600",
         bgColor: "bg-orange-50",
         count: `${stats.totalOrders} طلب`,
+      },
+    ];
+
+    // إضافة الكارت التفصيلي للطلبات (جاري / تم)
+    const orderStatsCards = [
+      {
+        title: "طلبات جاري",
+        description: "الطلبات التي لم تكتمل بعد",
+        icon: "⏳",
+        href: "/dashboard/orders",
+        color: "from-amber-500 to-yellow-500",
+        bgColor: "bg-amber-50",
+        count: `${stats.pendingOrders} طلب`,
+      },
+      {
+        title: "طلبات تمت",
+        description: "الطلبات المكتملة والمسلمة",
+        icon: "✅",
+        href: "/dashboard/orders",
+        color: "from-emerald-500 to-green-600",
+        bgColor: "bg-emerald-50",
+        count: `${stats.completedOrders} طلب`,
       },
     ];
 
@@ -162,9 +203,9 @@ export default function Dashboard() {
     ];
 
     if (isManager) {
-      return [...baseCards, ...managerCards];
+      return [...baseCards, ...orderStatsCards, ...managerCards];
     } else if (isEmployee) {
-      return baseCards; // الموظف العادي يرى الطلبات فقط
+      return [...baseCards, ...orderStatsCards]; // الموظف العادي يرى الطلبات فقط
     }
 
     return [];

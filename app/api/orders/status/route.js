@@ -15,10 +15,10 @@ export async function PUT(request) {
     }
 
     // التحقق من أن الحالة مسموحة
-    const allowedStatuses = ["جاري", "تم"];
+    const allowedStatuses = ["جاري", "تم", "ملغي"];
     if (!allowedStatuses.includes(status)) {
       return NextResponse.json(
-        { error: "الحالة غير مسموحة. المسموح: جاري، تم" },
+        { error: "الحالة غير مسموحة. المسموح: جاري، تم، ملغي" },
         { status: 400 }
       );
     }
