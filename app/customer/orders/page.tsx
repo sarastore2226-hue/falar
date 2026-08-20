@@ -395,7 +395,7 @@ export default function CustomerOrdersPage() {
               <div class="info-item">
                 <strong>الحالة:</strong>
                 <span class="status-badge ${
-                  order.status === "تم" ? "status-completed" : ""
+                  order.status === "تم التسليم" ? "status-completed" : ""
                 }">
                   ${order.status}
                 </span>
@@ -515,21 +515,30 @@ export default function CustomerOrdersPage() {
           </div>
           <div className="bg-white rounded-lg p-4 border border-gray-200 text-center">
             <div className="text-2xl font-bold text-orange-600">
-              {orders.filter((o) => o.status === "جاري").length}
+              {
+                orders.filter(
+                  (o) =>
+                    o.status === "تحت التجهيز" || o.status === "جاري الشحن"
+                ).length
+              }
             </div>
             <div className="text-sm text-gray-600">قيد التنفيذ</div>
           </div>
           <div className="bg-white rounded-lg p-4 border border-gray-200 text-center">
             <div className="text-2xl font-bold text-green-600">
-              {orders.filter((o) => o.status === "تم").length}
+              {orders.filter((o) => o.status === "تم التسليم").length}
             </div>
             <div className="text-sm text-gray-600">مكتملة</div>
           </div>
           <div className="bg-white rounded-lg p-4 border border-gray-200 text-center">
             <div className="text-2xl font-bold text-purple-600">
               {
-                orders.filter((o) => o.status !== "جاري" && o.status !== "تم")
-                  .length
+                orders.filter(
+                  (o) =>
+                    o.status !== "تحت التجهيز" &&
+                    o.status !== "جاري الشحن" &&
+                    o.status !== "تم التسليم"
+                ).length
               }
             </div>
             <div className="text-sm text-gray-600">حالات أخرى</div>
@@ -580,10 +589,12 @@ export default function CustomerOrdersPage() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span
                         className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          order.status === "تم"
+                          order.status === "تم التسليم"
                             ? "bg-green-100 text-green-800"
-                            : order.status === "جاري"
+                            : order.status === "تحت التجهيز"
                             ? "bg-orange-100 text-orange-800"
+                            : order.status === "ملغي"
+                            ? "bg-red-100 text-red-800"
                             : "bg-blue-100 text-blue-800"
                         }`}
                       >
@@ -704,8 +715,14 @@ export default function CustomerOrdersPage() {
                       <strong>الحالة:</strong>
                       <span
                         className={`mr-2 px-2 py-1 rounded-full text-sm ${
-                          selectedOrder.status === "جاري"
+                          selectedOrder.status === "تحت التجهيز"
                             ? "bg-orange-100 text-orange-800"
+                            : selectedOrder.status === "جاري الشحن"
+                            ? "bg-blue-100 text-blue-800"
+                            : selectedOrder.status === "تم التسليم"
+                            ? "bg-green-100 text-green-800"
+                            : selectedOrder.status === "ملغي"
+                            ? "bg-red-100 text-red-800"
                             : "bg-green-100 text-green-800"
                         }`}
                       >

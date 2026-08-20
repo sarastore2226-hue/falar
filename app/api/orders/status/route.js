@@ -15,10 +15,10 @@ export async function PUT(request) {
     }
 
     // التحقق من أن الحالة مسموحة
-    const allowedStatuses = ["جاري", "تم", "ملغي"];
+    const allowedStatuses = ["تحت التجهيز", "جاري الشحن", "تم التسليم", "ملغي"];
     if (!allowedStatuses.includes(status)) {
       return NextResponse.json(
-        { error: "الحالة غير مسموحة. المسموح: جاري، تم، ملغي" },
+        { error: "الحالة غير مسموحة. المسموح: تحت التجهيز، جاري الشحن، تم التسليم، ملغي" },
         { status: 400 }
       );
     }
@@ -59,7 +59,7 @@ export async function PUT(request) {
         }
       }
 
-      // ✅ عند إعادة تفعيل طلب ملغي (إلى جاري/تم): خصم الكميات مجدداً
+      // ✅ عند إعادة تفعيل طلب ملغي (إلى أي حالة أخرى): خصم الكميات مجدداً
       if (!isCancelling && wasCancelled) {
         for (const item of existingOrder.order_items) {
           const itemCode = item.item_code?.trim();

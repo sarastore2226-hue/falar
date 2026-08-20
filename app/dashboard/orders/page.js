@@ -82,7 +82,7 @@ export default function OrdersManagement() {
         phone: "0123456789",
         address: "العنوان التجريبي ١",
         total_price: 450,
-        status: "جاري",
+        status: "تحت التجهيز",
         printed_by: null,
         printed_at: null,
         exported_by: null,
@@ -104,7 +104,7 @@ export default function OrdersManagement() {
         phone: "0111222333",
         address: "العنوان التجريبي ٢",
         total_price: 320,
-        status: "تم",
+        status: "جاري الشحن",
         printed_by: "محمد أحمد",
         printed_at: new Date("2024-01-14").toISOString(),
         exported_by: null,
@@ -143,7 +143,7 @@ export default function OrdersManagement() {
       console.log("📄 استجابة API الطباعة:", result);
 
       if (result.success) {
-        alert("✅ تم تحديث حالة الطلب إلى 'تم' وتسجيل عملية الطباعة");
+        alert("✅ تم تحديث حالة الطلب إلى 'جاري الشحن' وتسجيل عملية الطباعة");
 
         // ✅ تحديث فوري للواجهة بدون انتظار
         setOrders((prevOrders) =>
@@ -151,7 +151,7 @@ export default function OrdersManagement() {
             order.id === orderId
               ? {
                   ...order,
-                  status: "تم",
+                  status: "جاري الشحن",
                   printed_by: user.username,
                   printed_at: new Date().toISOString(),
                 }
@@ -246,9 +246,9 @@ export default function OrdersManagement() {
     }
   };
 
-  // ✅ إلغاء الطلب (فقط إذا كانت حالته جاري)
+  // ✅ إلغاء الطلب (من حالتي تحت التجهيز أو جاري الشحن)
   const handleCancelOrder = async (orderId) => {
-    if (!confirm("هل أنت متأكد من إلغاء هذا الطلب؟ لا يمكن التراجع عن هذا الإجراء.")) {
+    if (!confirm("هل أنت متأكد من إلغاء هذا الطلب؟ سيتم استرجاع الكميات إلى المخزون.")) {
       return;
     }
 
@@ -277,6 +277,67 @@ export default function OrdersManagement() {
         );
       } else {
         alert("❌ فشل في إلغاء الطلب: " + result.error);
+      }
+    } catch (error) {
+      console.error("❌ خطأ في الاتصال:", error);
+      alert("❌ خطأ في الاتصال");
+    }
+  };
+
+  // ✅ تأكيد تسليم الطلب (فقط من حالة جاري الشحن)
+  const handleDeliverOrder = async (orderId) => {
+    try {
+      const response = await fetch("/api/orders/status", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          orderId,
+          status: "تم التسليم",
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert("✅ تم تأكيد تسليم الطلب");
+
+        // ✅ تحديث فوري للواجهة
+        setOrders((prevOrders) =>
+          prevOrders.map((order) =>
+            order.id === orderId ? { ...order, status: "تم التسليم" } : order
+          )
+        );
+      } else {
+        alert("❌ فشل في تأكيد التسليم: " + result.error);
+      }
+    } catch (error) {
+      console.error("❌ خطأ في الاتصال:", error);
+      alert("❌ خطأ في الاتصال");
+    }
+  };
+
+  // ✅ حذف الطلب نهائياً (غير متاح لحالة تم التسليم) مع استرجاع المخزون
+  const handleDeleteOrder = async (orderId) => {
+    if (!confirm("هل أنت متأكد من حذف هذا الطلب نهائياً؟ سيتم استرجاع الكميات إلى المخزون.")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/orders/${orderId}`, {
+        method: "DELETE",
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert("✅ تم حذف الطلب بنجاح");
+
+        // ✅ تحديث فوري للواجهة
+        setOrders((prevOrders) => prevOrders.filter((order) => order.id !== orderId));
+      } else {
+        alert("❌ فشل في حذف الطلب: " + result.error);
       }
     } catch (error) {
       console.error("❌ خطأ في الاتصال:", error);
@@ -351,7 +412,7 @@ export default function OrdersManagement() {
         </div>
 
         {/* إحصائيات سريعة - محدثة */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-8">
           <div className="bg-white rounded-lg p-4 border border-gray-200 text-center">
             <div className="text-2xl font-bold text-gray-900">
               {orders.length}
@@ -360,27 +421,33 @@ export default function OrdersManagement() {
           </div>
           <div className="bg-white rounded-lg p-4 border border-gray-200 text-center">
             <div className="text-2xl font-bold text-orange-600">
-              {orders.filter((o) => o.status === "جاري").length}
+              {orders.filter((o) => o.status === "تحت التجهيز").length}
             </div>
-            <div className="text-sm text-gray-600">جاري</div>
+            <div className="text-sm text-gray-600">تحت التجهيز</div>
+          </div>
+          <div className="bg-white rounded-lg p-4 border border-gray-200 text-center">
+            <div className="text-2xl font-bold text-blue-600">
+              {orders.filter((o) => o.status === "جاري الشحن").length}
+            </div>
+            <div className="text-sm text-gray-600">جاري الشحن</div>
           </div>
           <div className="bg-white rounded-lg p-4 border border-gray-200 text-center">
             <div className="text-2xl font-bold text-green-600">
-              {orders.filter((o) => o.status === "تم").length}
+              {orders.filter((o) => o.status === "تم التسليم").length}
             </div>
-            <div className="text-sm text-gray-600">تم</div>
+            <div className="text-sm text-gray-600">تم التسليم</div>
+          </div>
+          <div className="bg-white rounded-lg p-4 border border-gray-200 text-center">
+            <div className="text-2xl font-bold text-red-600">
+              {orders.filter((o) => o.status === "ملغي").length}
+            </div>
+            <div className="text-sm text-gray-600">ملغي</div>
           </div>
           <div className="bg-white rounded-lg p-4 border border-gray-200 text-center">
             <div className="text-2xl font-bold text-purple-600">
               {orders.filter((o) => o.printed_by).length}
             </div>
             <div className="text-sm text-gray-600">مطبوع</div>
-          </div>
-          <div className="bg-white rounded-lg p-4 border border-gray-200 text-center">
-            <div className="text-2xl font-bold text-blue-600">
-              {orders.filter((o) => o.exported_by).length}
-            </div>
-            <div className="text-sm text-gray-600">مُصدر</div>
           </div>
         </div>
 
@@ -403,8 +470,9 @@ export default function OrdersManagement() {
                 className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="">جميع الحالات</option>
-                <option value="جاري">جاري</option>
-                <option value="تم">تم</option>
+                <option value="تحت التجهيز">تحت التجهيز</option>
+                <option value="جاري الشحن">جاري الشحن</option>
+                <option value="تم التسليم">تم التسليم</option>
                 <option value="ملغي">ملغي</option>
               </select>
             </div>
@@ -418,6 +486,8 @@ export default function OrdersManagement() {
           onExport={handleExport}
           onStatusChange={handleStatusChange}
           onCancelOrder={handleCancelOrder}
+          onDeliverOrder={handleDeliverOrder}
+          onDeleteOrder={handleDeleteOrder}
           currentUser={user}
           onRefresh={forceRefresh} // ✅ تمرير دالة التحديث
         />

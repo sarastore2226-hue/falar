@@ -63,10 +63,12 @@ export default function CustomerDashboard() {
 
       setStats({
         totalOrders: customerOrders.length,
-        pendingOrders: customerOrders.filter((o: Order) => o.status === "جاري")
-          .length,
-        completedOrders: customerOrders.filter((o: Order) => o.status === "تم")
-          .length,
+        pendingOrders: customerOrders.filter(
+          (o: Order) => o.status === "تحت التجهيز" || o.status === "جاري الشحن"
+        ).length,
+        completedOrders: customerOrders.filter(
+          (o: Order) => o.status === "تم التسليم"
+        ).length,
       });
     } catch (error) {
       console.error("Error fetching orders:", error);
@@ -224,8 +226,10 @@ export default function CustomerDashboard() {
                 </div>
                 <span
                   className={`text-xs px-2 py-1 rounded-full ${
-                    order.status === "تم"
+                    order.status === "تم التسليم"
                       ? "bg-green-100 text-green-800"
+                      : order.status === "ملغي"
+                      ? "bg-red-100 text-red-800"
                       : "bg-orange-100 text-orange-800"
                   }`}
                 >

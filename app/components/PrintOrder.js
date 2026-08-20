@@ -348,7 +348,7 @@ export default function PrintOrder({ order, onClose, onPrint, onExport }) {
               <div class="info-item">
                 <strong>الحالة:</strong>
                 <span class="status-badge ${
-                  order.status === "تم" ? "status-completed" : ""
+                  order.status === "تم التسليم" ? "status-completed" : ""
                 }">
                   ${order.status}
                 </span>
@@ -509,8 +509,14 @@ export default function PrintOrder({ order, onClose, onPrint, onExport }) {
                     <strong>الحالة:</strong>
                     <span
                       className={`mr-2 px-2 py-1 rounded-full text-sm ${
-                        order.status === "جاري"
+                        order.status === "تحت التجهيز"
                           ? "bg-orange-100 text-orange-800"
+                          : order.status === "جاري الشحن"
+                          ? "bg-blue-100 text-blue-800"
+                          : order.status === "تم التسليم"
+                          ? "bg-green-100 text-green-800"
+                          : order.status === "ملغي"
+                          ? "bg-red-100 text-red-800"
                           : "bg-green-100 text-green-800"
                       }`}
                     >

@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 // GET - جلب طلب محدد بواسطة ID
 export async function GET(request, { params }) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     const order = await prisma.orders.findUnique({
       where: { id },
@@ -26,7 +26,7 @@ export async function GET(request, { params }) {
       address: order.address,
       phone: order.phone,
       total_price: parseFloat(order.total_price.toString()),
-      status: order.status || "جاري", // ✅ من قاعدة البيانات وليس قيمة ثابتة
+      status: order.status || "تحت التجهيز", // ✅ من قاعدة البيانات وليس قيمة ثابتة
       timestamp: order.timestamp,
       printed_by: order.printed_by || null,
       printed_at: order.printed_at || null,
@@ -54,7 +54,7 @@ export async function GET(request, { params }) {
 // PUT - تحديث طلب محدد
 export async function PUT(request, { params }) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const data = await request.json();
 
     const updatedOrder = await prisma.orders.update({
@@ -86,18 +86,58 @@ export async function PUT(request, { params }) {
   }
 }
 
-// DELETE - حذف طلب محدد
+// DELETE - حذف طلب محدد مع استرجاع المخزون
 export async function DELETE(request, { params }) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
-    await prisma.orders.delete({
-      where: { id },
+    // حذف الطلب واسترجاع المخزون في نفس المعاملة
+    await prisma.$transaction(async (tx) => {
+      // جلب الطلب الحالي مع عناصره
+      const existingOrder = await tx.orders.findUnique({
+        where: { id },
+        include: { order_items: true },
+      });
+
+      if (!existingOrder) {
+        return null;
+      }
+
+      // ✅ استرجاع المخزون فقط إذا لم يكن الطلب قد استُردّ مخزونه مسبقاً
+      // (الطلب المُلغي استُردّ مخزونه عند الإلغاء، فلا نسترجع مرة أخرى)
+      if (existingOrder.status !== "ملغي") {
+        for (const item of existingOrder.order_items) {
+          const itemCode = item.item_code?.trim();
+          if (!itemCode) continue;
+
+          const product = await tx.products.findFirst({
+            where: { item_code: itemCode },
+          });
+
+          if (!product) continue;
+
+          await tx.products.update({
+            where: { unique_id: product.unique_id },
+            data: {
+              cur_qty: (Number(product.cur_qty) || 0) + item.quantity,
+            },
+          });
+        }
+      }
+
+      // حذف عناصر الطلب ثم الطلب نفسه
+      await tx.order_items.deleteMany({
+        where: { order_id: id },
+      });
+
+      await tx.orders.delete({
+        where: { id },
+      });
     });
 
     return NextResponse.json({
       success: true,
-      message: "تم حذف الطلب بنجاح",
+      message: "تم حذف الطلب بنجاح واسترجاع الكميات إلى المخزون",
     });
   } catch (error) {
     console.error("Error deleting order:", error);

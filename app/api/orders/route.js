@@ -75,7 +75,7 @@ export async function POST(request) {
         address: data.address,
         phone: data.phone,
         total_price: data.total_price,
-        status: "جاري", // ✅ القيمة الافتراضية من السكيما
+        status: "تحت التجهيز", // ✅ القيمة الافتراضية من السكيما
         order_items: {
           create: orderItemsWithMergedNames.map((item) => ({
             product: item.product, // ✅ الآن يحتوي على الاسم + اللون + المقاس

@@ -14,11 +14,11 @@ export async function POST(request) {
       );
     }
 
-    // تحديث الطلب - تغيير الحالة إلى "تم" وتسجيل بيانات الطباعة
+    // تحديث الطلب - تغيير الحالة إلى "جاري الشحن" وتسجيل بيانات الطباعة
     const updatedOrder = await prisma.orders.update({
       where: { id: orderId },
       data: {
-        status: "تم",
+        status: "جاري الشحن",
         printed_by: printedBy,
         printed_at: new Date(),
       },

@@ -15,7 +15,9 @@ export default function Dashboard() {
     totalOrders: 0,
     totalRevenue: 0,
     pendingOrders: 0,
-    completedOrders: 0,
+    shippingOrders: 0,
+    deliveredOrders: 0,
+    cancelledOrders: 0,
     productsWithImages: 0,
     productsWithoutImages: 0,
     categoriesCount: 0,
@@ -86,10 +88,16 @@ export default function Dashboard() {
         0
       );
       const pendingOrders = ordersList.filter(
-        (order) => order.status === "جاري"
+        (order) => order.status === "تحت التجهيز"
       ).length;
-      const completedOrders = ordersList.filter(
-        (order) => order.status === "تم"
+      const shippingOrders = ordersList.filter(
+        (order) => order.status === "جاري الشحن"
+      ).length;
+      const deliveredOrders = ordersList.filter(
+        (order) => order.status === "تم التسليم"
+      ).length;
+      const cancelledOrders = ordersList.filter(
+        (order) => order.status === "ملغي"
       ).length;
 
       const products = productsData.products || [];
@@ -101,7 +109,9 @@ export default function Dashboard() {
         totalOrders: totalOrders,
         totalRevenue: totalRevenue,
         pendingOrders: pendingOrders,
-        completedOrders: completedOrders,
+        shippingOrders: shippingOrders,
+        deliveredOrders: deliveredOrders,
+        cancelledOrders: cancelledOrders,
         productsWithImages: productsWithImages,
         productsWithoutImages: products.length - productsWithImages,
         categoriesCount: categoriesData.length,
@@ -131,25 +141,43 @@ export default function Dashboard() {
       },
     ];
 
-    // إضافة الكارت التفصيلي للطلبات (جاري / تم)
+    // إضافة الكارت التفصيلي للطلبات حسب الحالة
     const orderStatsCards = [
       {
-        title: "طلبات جاري",
-        description: "الطلبات التي لم تكتمل بعد",
-        icon: "⏳",
+        title: "تحت التجهيز",
+        description: "الطلبات الجديدة التي لم تُطبع بعد",
+        icon: "📦",
         href: "/dashboard/orders",
-        color: "from-amber-500 to-yellow-500",
-        bgColor: "bg-amber-50",
+        color: "from-orange-500 to-amber-500",
+        bgColor: "bg-orange-50",
         count: `${stats.pendingOrders} طلب`,
       },
       {
-        title: "طلبات تمت",
-        description: "الطلبات المكتملة والمسلمة",
+        title: "جاري الشحن",
+        description: "الطلبات المطبوعة والشحنة جارية",
+        icon: "🚚",
+        href: "/dashboard/orders",
+        color: "from-blue-500 to-blue-600",
+        bgColor: "bg-blue-50",
+        count: `${stats.shippingOrders} طلب`,
+      },
+      {
+        title: "تم التسليم",
+        description: "الطلبات المسلّمة للعميل",
         icon: "✅",
         href: "/dashboard/orders",
         color: "from-emerald-500 to-green-600",
         bgColor: "bg-emerald-50",
-        count: `${stats.completedOrders} طلب`,
+        count: `${stats.deliveredOrders} طلب`,
+      },
+      {
+        title: "ملغي",
+        description: "الطلبات الملغاة",
+        icon: "❌",
+        href: "/dashboard/orders",
+        color: "from-red-500 to-rose-600",
+        bgColor: "bg-red-50",
+        count: `${stats.cancelledOrders} طلب`,
       },
     ];
 

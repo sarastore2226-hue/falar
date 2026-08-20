@@ -10,6 +10,8 @@ export default function OrdersTable({
   onExport,
   onStatusChange,
   onCancelOrder,
+  onDeliverOrder,
+  onDeleteOrder,
   currentUser,
 }) {
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -35,12 +37,12 @@ export default function OrdersTable({
 
   const getStatusColor = (status) => {
     switch (status) {
-      case "جاري":
+      case "تحت التجهيز":
         return "bg-orange-100 text-orange-800 border-orange-200";
-      case "تم":
-        return "bg-green-100 text-green-800 border-green-200";
-      case "معلق":
+      case "جاري الشحن":
         return "bg-blue-100 text-blue-800 border-blue-200";
+      case "تم التسليم":
+        return "bg-green-100 text-green-800 border-green-200";
       case "ملغي":
         return "bg-red-100 text-red-800 border-red-200";
       default:
@@ -178,12 +180,29 @@ export default function OrdersTable({
                       >
                         👁️ عرض التفاصيل
                       </button>
-                      {order.status === "جاري" && (
+                      {order.status === "جاري الشحن" && (
                         <button
                           onClick={() => {
                             if (
                               confirm(
-                                "هل أنت متأكد من إلغاء هذا الطلب؟ لا يمكن التراجع عن هذا الإجراء."
+                                "هل تم تسليم هذا الطلب فعلياً للعميل؟"
+                              )
+                            ) {
+                              onDeliverOrder(order.id);
+                            }
+                          }}
+                          className="bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700 transition-colors text-xs flex items-center gap-1"
+                        >
+                          ✅ تم التسليم
+                        </button>
+                      )}
+                      {(order.status === "تحت التجهيز" ||
+                        order.status === "جاري الشحن") && (
+                        <button
+                          onClick={() => {
+                            if (
+                              confirm(
+                                "هل أنت متأكد من إلغاء هذا الطلب؟ سيتم استرجاع الكميات إلى المخزون."
                               )
                             ) {
                               onCancelOrder(order.id);
@@ -192,6 +211,22 @@ export default function OrdersTable({
                           className="bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700 transition-colors text-xs flex items-center gap-1"
                         >
                           ❌ إلغاء الطلب
+                        </button>
+                      )}
+                      {order.status !== "تم التسليم" && (
+                        <button
+                          onClick={() => {
+                            if (
+                              confirm(
+                                "هل أنت متأكد من حذف هذا الطلب نهائياً؟ سيتم استرجاع الكميات إلى المخزون."
+                              )
+                            ) {
+                              onDeleteOrder(order.id);
+                            }
+                          }}
+                          className="bg-gray-700 text-white px-3 py-1 rounded-lg hover:bg-gray-800 transition-colors text-xs flex items-center gap-1"
+                        >
+                          🗑️ حذف
                         </button>
                       )}
                     </div>
@@ -232,8 +267,8 @@ export default function OrdersTable({
               </p>
               {actionType === "print" && (
                 <p className="text-sm text-gray-500 mb-4">
-                  بعد الطباعة، سيتم تغيير حالة الطلب إلى "تم" وتسجيل اسمك كموظف
-                  قام بالطباعة.
+                  بعد الطباعة، سيتم تغيير حالة الطلب إلى "جاري الشحن" وتسجيل
+                  اسمك كموظف قام بالطباعة.
                 </p>
               )}
               <div className="flex gap-3 justify-end">
