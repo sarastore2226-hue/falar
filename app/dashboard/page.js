@@ -123,6 +123,18 @@ export default function Dashboard() {
     }
   };
 
+  // ✅ تحديث الإحصائيات فورياً عند وصول طلب جديد من الريال تايم
+  useEffect(() => {
+    const handleOrderCreated = () => {
+      fetchStats();
+    };
+
+    window.addEventListener("order-created", handleOrderCreated);
+    return () => {
+      window.removeEventListener("order-created", handleOrderCreated);
+    };
+  }, []);
+
   // ✅ تحديد البطاقات بناءً على صلاحية المستخدم
   const getDashboardCards = () => {
     const isManager = user?.position === "مدير";

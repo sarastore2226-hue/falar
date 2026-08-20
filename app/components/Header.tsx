@@ -6,6 +6,7 @@ import { useProducts } from "../../context/ProductsContext";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useCompanyInfo } from "../../hooks/useCompanyInfo";
 import { useAuth } from "../../context/AuthContext";
+import OrderNotifications from "./OrderNotifications";
 
 export default function Header() {
   const { getCartItemsCount, cartItems, getCartTotal } = useCart();
@@ -285,6 +286,9 @@ export default function Header() {
                 </div>
               </Link>
             )}
+
+            {/* ✅ إشعارات الطلبات المباشرة للموظفين والمديرين */}
+            {canAccessDashboard && <OrderNotifications />}
             {isCustomer && (
               <Link
                 href="/customer/dashboard"

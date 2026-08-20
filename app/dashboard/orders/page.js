@@ -73,6 +73,26 @@ export default function OrdersManagement() {
     setRefreshTrigger((prev) => prev + 1);
   };
 
+  // ✅ التحديث الفوري عند وصول طلب جديد أو تغيير حالة من حدث الريال تايم
+  useEffect(() => {
+    const handleOrderCreated = () => {
+      console.log("🔔 طلب جديد وصل - تحديث تلقائي للقائمة");
+      forceRefresh();
+    };
+    const handleOrderUpdated = () => {
+      console.log("🔄 حالة طلب تغيرت - تحديث تلقائي للقائمة");
+      forceRefresh();
+    };
+
+    window.addEventListener("order-created", handleOrderCreated);
+    window.addEventListener("order-updated", handleOrderUpdated);
+
+    return () => {
+      window.removeEventListener("order-created", handleOrderCreated);
+      window.removeEventListener("order-updated", handleOrderUpdated);
+    };
+  }, []);
+
   // بيانات وهمية احتياطية
   const getMockOrders = () => {
     return [
