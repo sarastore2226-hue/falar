@@ -38,6 +38,7 @@ interface Product {
     sizes: string[];
     itemCode?: string;
     sizeItemCodes?: { [size: string]: string };
+    sizePrices?: { [size: string]: number };
   }>;
   cur_qty?: number;
   stor_id?: number;
@@ -51,7 +52,8 @@ interface CartContextType {
     product: Product,
     color: string,
     size: string,
-    quantity?: number
+    quantity?: number,
+    price?: number
   ) => void;
   removeFromCart: (id: string) => void; // ✅ تغيير: نستخدم ID الفريد فقط
   updateQuantity: (id: string, quantity: number) => void; // ✅ نستخدم ID الفريد
@@ -100,7 +102,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
     product: Product,
     color: string,
     size: string,
-    quantity: number = 1
+    quantity: number = 1,
+    selectedPrice?: number
   ) => {
     setCartItems((prevItems) => {
       const itemId = generateCartItemId(product.modelId, color, size);
@@ -122,6 +125,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
         updatedItems[existingItemIndex] = {
           ...existingItem,
           quantity: newQuantity,
+          price: Number.isFinite(selectedPrice)
+            ? selectedPrice
+            : existingItem.price,
         };
 
         console.log("🛒 تحديث كمية المنتج:", {
@@ -149,7 +155,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         const newItem: CartItem = {
           id: itemId, // ✅ استخدام ID فريد
           name: product.item_name || product.description,
-          price: product.price,
+          price: Number.isFinite(selectedPrice) ? selectedPrice : product.price,
           color: color || "افتراضي",
           size: size || "ONE SIZE",
           quantity: quantity,

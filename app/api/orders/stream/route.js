@@ -4,11 +4,12 @@ import { supabase, isSupabaseRealtimeConfigured } from "@/lib/supabase";
 export const dynamic = "force-dynamic";
 
 const HEARTBEAT_INTERVAL = 25000;
+const ACTIVE_ORDER_STATUSES = ["جاري", "تحت التجهيز"];
 
 async function getPendingCount() {
   try {
     return await prisma.orders.count({
-      where: { status: "تحت التجهيز" },
+      where: { status: { in: ACTIVE_ORDER_STATUSES } },
     });
   } catch (error) {
     console.error("SSE pending count error:", error);
@@ -134,7 +135,7 @@ export async function GET(request) {
       let channel = null;
 
       channel = supabase
-        .channel("orders-realtime")
+        .channel(`orders-realtime-${crypto.randomUUID()}`)
         .on(
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "orders" },
@@ -146,14 +147,14 @@ export async function GET(request) {
           "postgres_changes",
           { event: "UPDATE", schema: "public", table: "orders" },
           (payload) => {
-            if (!payload.old || !payload.new) return;
-            if (payload.old.status !== payload.new.status) {
-              send({
-                type: "status",
-                order: formatOrder(payload.new),
-                oldStatus: payload.old.status,
-              });
-            }
+            if (!payload.new) return;
+            const oldStatus = payload.old?.status;
+            if (oldStatus === payload.new.status) return;
+            send({
+              type: "status",
+              order: formatOrder(payload.new),
+              oldStatus,
+            });
           }
         )
         .subscribe(async (status) => {

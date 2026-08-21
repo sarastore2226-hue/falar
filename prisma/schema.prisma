@@ -54,7 +54,7 @@ model orders {
   address       String      @db.Text
   phone         String      @db.VarChar(50)
   total_price   Decimal     @db.Decimal(19, 4)
-  status        String      @default("جاري")
+  status        String      @default("تحت التجهيز")
   printed_by    String?     @db.VarChar(255)
   printed_at    DateTime?
   exported_by   String?     @db.VarChar(255)

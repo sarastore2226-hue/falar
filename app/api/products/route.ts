@@ -126,6 +126,7 @@ export async function GET(request: Request) {
           sizes: [row.size || "Free"],
           quantities: [quantity],
           sizeItemCodes: { [row.size || "Free"]: row.item_code || "" },
+          sizePrices: { [row.size || "Free"]: Number(row.out_price) || 0 },
         });
       } else {
         if (!variant.sizes.includes(row.size || "Free")) {
@@ -135,6 +136,7 @@ export async function GET(request: Request) {
         if (row.size) {
           variant.sizeItemCodes[row.size] = row.item_code || "";
         }
+        variant.sizePrices[row.size || "Free"] = Number(row.out_price) || 0;
       }
     });
 

@@ -110,6 +110,7 @@ export async function GET(
           imageUrl: imageUrl,
           itemCode: row.item_code, // كود اللون
           sizes: [],
+          sizePrices: {},
           sizeQuantities: {},
           sizeItemCodes: {},
           cur_qty: 0, // إجمالي كمية هذا اللون
@@ -128,6 +129,7 @@ export async function GET(
         if (row.item_code) {
           variant.sizeItemCodes[size] = row.item_code;
         }
+        variant.sizePrices[size] = Number(row.out_price) || 0;
       }
     });
 
@@ -173,7 +175,6 @@ export async function PUT(
     // 3. البيانات المشتركة التي تُطبّق على كل النسخ
     const sharedData: any = {
       item_name: body.item_name,
-      out_price: parseFloat(body.out_price) || 0,
       group_name: body.group_name,
       kind_name: body.kind_name,
     };
@@ -202,6 +203,10 @@ export async function PUT(
           item_code: body.item_code || targetVariant.item_code,
           color: body.color || targetVariant.color,
           size: body.size || targetVariant.size,
+          out_price:
+            body.out_price !== undefined
+              ? parseFloat(body.out_price) || 0
+              : targetVariant.out_price,
           cur_qty: parseInt(body.cur_qty) || 0,
           images: body.images || targetVariant.images,
         },

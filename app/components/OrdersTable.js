@@ -213,22 +213,20 @@ export default function OrdersTable({
                           ❌ إلغاء الطلب
                         </button>
                       )}
-                      {order.status !== "تم التسليم" && (
-                        <button
-                          onClick={() => {
-                            if (
-                              confirm(
-                                "هل أنت متأكد من حذف هذا الطلب نهائياً؟ سيتم استرجاع الكميات إلى المخزون."
-                              )
-                            ) {
-                              onDeleteOrder(order.id);
-                            }
-                          }}
-                          className="bg-gray-700 text-white px-3 py-1 rounded-lg hover:bg-gray-800 transition-colors text-xs flex items-center gap-1"
-                        >
-                          🗑️ حذف
-                        </button>
-                      )}
+                      <button
+                        onClick={() => {
+                          if (
+                            confirm(
+                              "هل أنت متأكد من حذف هذا الطلب نهائياً؟ سيتم استرجاع الكميات إلى المخزون."
+                            )
+                          ) {
+                            onDeleteOrder(order.id);
+                          }
+                        }}
+                        className="bg-gray-700 text-white px-3 py-1 rounded-lg hover:bg-gray-800 transition-colors text-xs flex items-center gap-1"
+                      >
+                        🗑️ حذف
+                      </button>
                     </div>
                   </td>
                 </tr>

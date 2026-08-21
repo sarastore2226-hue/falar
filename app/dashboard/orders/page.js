@@ -338,7 +338,7 @@ export default function OrdersManagement() {
     }
   };
 
-  // ✅ حذف الطلب نهائياً (غير متاح لحالة تم التسليم) مع استرجاع المخزون
+  // ✅ حذف الطلب نهائياً مع استرجاع المخزون
   const handleDeleteOrder = async (orderId) => {
     if (!confirm("هل أنت متأكد من حذف هذا الطلب نهائياً؟ سيتم استرجاع الكميات إلى المخزون.")) {
       return;

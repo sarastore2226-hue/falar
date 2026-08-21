@@ -3,10 +3,12 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
+const ACTIVE_ORDER_STATUSES = ["جاري", "تحت التجهيز"];
+
 export async function GET() {
   try {
     const orders = await prisma.orders.findMany({
-      where: { status: "تحت التجهيز" },
+      where: { status: { in: ACTIVE_ORDER_STATUSES } },
       include: { order_items: true },
       orderBy: { timestamp: "desc" },
     });

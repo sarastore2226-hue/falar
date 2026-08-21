@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const PENDING_STATUS = "تحت التجهيز";
+const ACTIVE_STATUSES = new Set(["جاري", "تحت التجهيز"]);
 
 async function fetchPendingOrders() {
   try {
@@ -27,6 +27,13 @@ export function useOrderRealtime({ enabled = true } = {}) {
 
     let retryTimer = null;
     let stopped = false;
+
+    const syncPendingOrders = async () => {
+      const list = await fetchPendingOrders();
+      if (stopped) return;
+      setPendingOrders(list);
+      setPendingCount(list.length);
+    };
 
     const connect = () => {
       if (stopped || esRef.current) return;
@@ -57,16 +64,12 @@ export function useOrderRealtime({ enabled = true } = {}) {
             if (typeof data.pendingCount === "number") {
               setPendingCount(data.pendingCount);
             }
-            fetchPendingOrders().then((list) => {
-              if (stopped) return;
-              setPendingOrders(list);
-              setPendingCount(list.length);
-            });
+            syncPendingOrders();
             return;
           }
 
           if (data.type === "new" && data.order) {
-            if (data.order.status === PENDING_STATUS) {
+            if (ACTIVE_STATUSES.has(data.order.status)) {
               setPendingCount((prev) => prev + 1);
               setPendingOrders((prev) =>
                 [data.order, ...prev.filter((o) => o.id !== data.order.id)].slice(
@@ -83,17 +86,19 @@ export function useOrderRealtime({ enabled = true } = {}) {
           if (data.type === "status" && data.order) {
             const oldStatus = data.oldStatus;
             const newStatus = data.order.status;
-            if (
-              oldStatus === PENDING_STATUS &&
-              newStatus !== PENDING_STATUS
+            if (oldStatus === undefined || oldStatus === null) {
+              syncPendingOrders();
+            } else if (
+              ACTIVE_STATUSES.has(oldStatus) &&
+              !ACTIVE_STATUSES.has(newStatus)
             ) {
               setPendingCount((prev) => Math.max(0, prev - 1));
               setPendingOrders((prev) =>
                 prev.filter((o) => o.id !== data.order.id)
               );
             } else if (
-              oldStatus !== PENDING_STATUS &&
-              newStatus === PENDING_STATUS
+              !ACTIVE_STATUSES.has(oldStatus) &&
+              ACTIVE_STATUSES.has(newStatus)
             ) {
               setPendingCount((prev) => prev + 1);
               setPendingOrders((prev) =>

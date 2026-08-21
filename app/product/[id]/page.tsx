@@ -26,6 +26,7 @@ interface Product {
     itemCode?: string;
     sizeQuantities?: { [size: string]: number };
     sizeItemCodes?: { [size: string]: string };
+    sizePrices?: { [size: string]: number };
     totalColorQuantity?: number;
   }>;
   cur_qty?: number;
@@ -308,6 +309,9 @@ export default function ProductDetail() {
 
   const currentSizeQuantity = getSizeQuantity();
 
+  const selectedPrice =
+    selectedVariant?.sizePrices?.[selectedSize] ?? product?.price ?? 0;
+
   const handleAddToCart = () => {
     if (!product) return;
     if (employee && currentSizeQuantity === 0) {
@@ -318,7 +322,7 @@ export default function ProductDetail() {
       selectedColor || product.variants?.[0]?.color || "افتراضي";
     const finalSize = selectedSize || selectedVariant?.sizes?.[0] || "ONE SIZE";
 
-    addToCart(product, finalColor, finalSize, quantity);
+    addToCart(product, finalColor, finalSize, quantity, selectedPrice);
     alert(`✅ تم إضافة "${product.description}" إلى السلة`);
   };
 
@@ -567,7 +571,7 @@ export default function ProductDetail() {
 
               <div className="flex items-center space-x-4">
                 <span className="text-3xl font-bold text-blue-600">
-                  {product.price?.toLocaleString()} ج.م
+                  {selectedPrice.toLocaleString()} ج.م
                 </span>
 
                 <span

@@ -95,6 +95,7 @@ export async function GET(request: Request) {
           stor_id: row.stor_id || 0,
           sizeItemCodes: {},
           sizeQuantities: {},
+          sizePrices: {},
         };
         groupedByMasterCode[masterCode].variants.push(variant);
 
@@ -117,6 +118,8 @@ export async function GET(request: Request) {
           (variant.sizeQuantities[size] || 0) + curQty;
         variant.sizeItemCodes = variant.sizeItemCodes || {};
         variant.sizeItemCodes[size] = itemCode;
+        variant.sizePrices = variant.sizePrices || {};
+        variant.sizePrices[size] = Number(row.out_price) || 0;
       }
 
       if (!size && itemCode) {

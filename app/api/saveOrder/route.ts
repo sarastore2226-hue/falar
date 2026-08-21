@@ -99,6 +99,7 @@ export async function POST(request: Request) {
           address: address,
           phone: phone,
           total_price: total_price,
+          status: "تحت التجهيز",
         },
       });
 
