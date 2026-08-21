@@ -34,7 +34,7 @@ function playChime() {
 }
 
 export default function OrderNotifications() {
-  const { connected, pendingCount, newOrders } = useOrderRealtime({
+  const { connected, pendingCount, pendingOrders } = useOrderRealtime({
     enabled: true,
   });
   const [isOpen, setIsOpen] = useState(false);
@@ -43,22 +43,24 @@ export default function OrderNotifications() {
   const toastTimerRef = useRef(null);
 
   useEffect(() => {
-    if (newOrders.length === 0) return;
+    const handleNewOrder = (event) => {
+      const order = event.detail;
+      setToast(order);
+      setShowToast(true);
+      playChime();
 
-    const latest = newOrders[0];
-    setToast(latest);
-    setShowToast(true);
-    playChime();
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = setTimeout(() => {
+        setShowToast(false);
+      }, 6000);
+    };
 
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => {
-      setShowToast(false);
-    }, 6000);
-
+    window.addEventListener("order-created", handleNewOrder);
     return () => {
+      window.removeEventListener("order-created", handleNewOrder);
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
-  }, [newOrders]);
+  }, []);
 
   const handleClick = () => {
     setIsOpen((prev) => !prev);
@@ -210,7 +212,7 @@ export default function OrderNotifications() {
               </div>
 
               <div className="max-h-80 overflow-y-auto">
-                {newOrders.length === 0 ? (
+                {pendingOrders.length === 0 ? (
                   <div className="p-6 text-center">
                     <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
                       <svg
@@ -223,22 +225,22 @@ export default function OrderNotifications() {
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth={2}
-                          d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                         />
                       </svg>
                     </div>
                     <p className="text-gray-500 text-sm">
-                      لا توجد طلبات جديدة بعد
+                      لا توجد طلبات بانتظار التنفيذ
                     </p>
                     <p className="text-gray-400 text-xs mt-1">
-                      سيظهر هنا أي طلب جديد بشكل فوري
+                      كل الطلبات تم التعامل معها
                     </p>
                   </div>
                 ) : (
                   <div className="divide-y divide-gray-100">
-                    {newOrders.slice(0, 15).map((order, index) => (
+                    {pendingOrders.slice(0, 20).map((order) => (
                       <Link
-                        key={index}
+                        key={order.id}
                         href="/dashboard/orders"
                         onClick={() => setIsOpen(false)}
                         className="flex items-center gap-3 p-3 hover:bg-gray-50 transition-colors"
@@ -265,6 +267,9 @@ export default function OrderNotifications() {
                           <p className="text-xs text-gray-500 truncate">
                             {order.id} - {formatTime(order.timestamp)}
                           </p>
+                          <span className="inline-block mt-1 text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full">
+                            بانتظار التنفيذ
+                          </span>
                         </div>
                         <div className="text-sm font-semibold text-green-600 flex-shrink-0">
                           {formatPrice(order.total_price)}

@@ -4,10 +4,22 @@ import { useEffect, useRef, useState } from "react";
 
 const PENDING_STATUS = "تحت التجهيز";
 
+async function fetchPendingOrders() {
+  try {
+    const response = await fetch("/api/orders/pending");
+    if (!response.ok) return [];
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error("خطأ في جلب الطلبات المعلقة:", error);
+    return [];
+  }
+}
+
 export function useOrderRealtime({ enabled = true } = {}) {
   const [connected, setConnected] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
-  const [newOrders, setNewOrders] = useState([]);
+  const [pendingOrders, setPendingOrders] = useState([]);
   const esRef = useRef(null);
 
   useEffect(() => {
@@ -45,13 +57,23 @@ export function useOrderRealtime({ enabled = true } = {}) {
             if (typeof data.pendingCount === "number") {
               setPendingCount(data.pendingCount);
             }
+            fetchPendingOrders().then((list) => {
+              if (stopped) return;
+              setPendingOrders(list);
+              setPendingCount(list.length);
+            });
             return;
           }
 
           if (data.type === "new" && data.order) {
-            setNewOrders((prev) => [data.order, ...prev].slice(0, 50));
             if (data.order.status === PENDING_STATUS) {
               setPendingCount((prev) => prev + 1);
+              setPendingOrders((prev) =>
+                [data.order, ...prev.filter((o) => o.id !== data.order.id)].slice(
+                  0,
+                  100
+                )
+              );
             }
             window.dispatchEvent(
               new CustomEvent("order-created", { detail: data.order })
@@ -61,13 +83,25 @@ export function useOrderRealtime({ enabled = true } = {}) {
           if (data.type === "status" && data.order) {
             const oldStatus = data.oldStatus;
             const newStatus = data.order.status;
-            if (oldStatus === PENDING_STATUS && newStatus !== PENDING_STATUS) {
+            if (
+              oldStatus === PENDING_STATUS &&
+              newStatus !== PENDING_STATUS
+            ) {
               setPendingCount((prev) => Math.max(0, prev - 1));
+              setPendingOrders((prev) =>
+                prev.filter((o) => o.id !== data.order.id)
+              );
             } else if (
               oldStatus !== PENDING_STATUS &&
               newStatus === PENDING_STATUS
             ) {
               setPendingCount((prev) => prev + 1);
+              setPendingOrders((prev) =>
+                [data.order, ...prev.filter((o) => o.id !== data.order.id)].slice(
+                  0,
+                  100
+                )
+              );
             }
             window.dispatchEvent(
               new CustomEvent("order-updated", { detail: data.order })
@@ -106,5 +140,5 @@ export function useOrderRealtime({ enabled = true } = {}) {
     };
   }, [enabled]);
 
-  return { connected, pendingCount, newOrders };
+  return { connected, pendingCount, pendingOrders };
 }
