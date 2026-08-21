@@ -14,10 +14,6 @@ export default function Dashboard() {
     totalUsers: 0,
     totalOrders: 0,
     totalRevenue: 0,
-    pendingOrders: 0,
-    shippingOrders: 0,
-    deliveredOrders: 0,
-    cancelledOrders: 0,
     productsWithImages: 0,
     productsWithoutImages: 0,
     categoriesCount: 0,
@@ -87,18 +83,6 @@ export default function Dashboard() {
         (sum, order) => sum + (Number(order.total_price) || 0),
         0
       );
-      const pendingOrders = ordersList.filter(
-        (order) => order.status === "تحت التجهيز"
-      ).length;
-      const shippingOrders = ordersList.filter(
-        (order) => order.status === "جاري الشحن"
-      ).length;
-      const deliveredOrders = ordersList.filter(
-        (order) => order.status === "تم التسليم"
-      ).length;
-      const cancelledOrders = ordersList.filter(
-        (order) => order.status === "ملغي"
-      ).length;
 
       const products = productsData.products || [];
       const productsWithImages = products.filter((p) => p.images).length;
@@ -108,10 +92,6 @@ export default function Dashboard() {
         totalUsers: usersData?.length || 0,
         totalOrders: totalOrders,
         totalRevenue: totalRevenue,
-        pendingOrders: pendingOrders,
-        shippingOrders: shippingOrders,
-        deliveredOrders: deliveredOrders,
-        cancelledOrders: cancelledOrders,
         productsWithImages: productsWithImages,
         productsWithoutImages: products.length - productsWithImages,
         categoriesCount: categoriesData.length,
@@ -150,46 +130,6 @@ export default function Dashboard() {
         color: "from-orange-500 to-orange-600",
         bgColor: "bg-orange-50",
         count: `${stats.totalOrders} طلب`,
-      },
-    ];
-
-    // إضافة الكارت التفصيلي للطلبات حسب الحالة
-    const orderStatsCards = [
-      {
-        title: "تحت التجهيز",
-        description: "الطلبات الجديدة التي لم تُطبع بعد",
-        icon: "📦",
-        href: "/dashboard/orders",
-        color: "from-orange-500 to-amber-500",
-        bgColor: "bg-orange-50",
-        count: `${stats.pendingOrders} طلب`,
-      },
-      {
-        title: "جاري الشحن",
-        description: "الطلبات المطبوعة والشحنة جارية",
-        icon: "🚚",
-        href: "/dashboard/orders",
-        color: "from-blue-500 to-blue-600",
-        bgColor: "bg-blue-50",
-        count: `${stats.shippingOrders} طلب`,
-      },
-      {
-        title: "تم التسليم",
-        description: "الطلبات المسلّمة للعميل",
-        icon: "✅",
-        href: "/dashboard/orders",
-        color: "from-emerald-500 to-green-600",
-        bgColor: "bg-emerald-50",
-        count: `${stats.deliveredOrders} طلب`,
-      },
-      {
-        title: "ملغي",
-        description: "الطلبات الملغاة",
-        icon: "❌",
-        href: "/dashboard/orders",
-        color: "from-red-500 to-rose-600",
-        bgColor: "bg-red-50",
-        count: `${stats.cancelledOrders} طلب`,
       },
     ];
 
@@ -243,9 +183,9 @@ export default function Dashboard() {
     ];
 
     if (isManager) {
-      return [...baseCards, ...orderStatsCards, ...managerCards];
+      return [...baseCards, ...managerCards];
     } else if (isEmployee) {
-      return [...baseCards, ...orderStatsCards]; // الموظف العادي يرى الطلبات فقط
+      return baseCards; // الموظف العادي يرى إدارة الطلبات فقط
     }
 
     return [];

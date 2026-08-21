@@ -5,6 +5,17 @@ export const dynamic = "force-dynamic";
 
 const HEARTBEAT_INTERVAL = 25000;
 
+async function getPendingCount() {
+  try {
+    return await prisma.orders.count({
+      where: { status: "تحت التجهيز" },
+    });
+  } catch (error) {
+    console.error("SSE pending count error:", error);
+    return 0;
+  }
+}
+
 function formatOrder(row) {
   return {
     id: row.id,
@@ -137,13 +148,18 @@ export async function GET(request) {
           (payload) => {
             if (!payload.old || !payload.new) return;
             if (payload.old.status !== payload.new.status) {
-              send({ type: "status", order: formatOrder(payload.new) });
+              send({
+                type: "status",
+                order: formatOrder(payload.new),
+                oldStatus: payload.old.status,
+              });
             }
           }
         )
-        .subscribe((status) => {
+        .subscribe(async (status) => {
           if (status === "SUBSCRIBED") {
-            send({ type: "connected", ok: true });
+            const pendingCount = await getPendingCount();
+            send({ type: "connected", ok: true, pendingCount });
           } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
             send({ type: "error", message: "فشل الاشتراك في Realtime" });
           }

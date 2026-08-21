@@ -34,8 +34,9 @@ function playChime() {
 }
 
 export default function OrderNotifications() {
-  const { connected, newOrders } = useOrderRealtime({ enabled: true });
-  const [unreadCount, setUnreadCount] = useState(0);
+  const { connected, pendingCount, newOrders } = useOrderRealtime({
+    enabled: true,
+  });
   const [isOpen, setIsOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [showToast, setShowToast] = useState(false);
@@ -45,8 +46,6 @@ export default function OrderNotifications() {
     if (newOrders.length === 0) return;
 
     const latest = newOrders[0];
-    setUnreadCount((prev) => prev + 1);
-
     setToast(latest);
     setShowToast(true);
     playChime();
@@ -63,7 +62,6 @@ export default function OrderNotifications() {
 
   const handleClick = () => {
     setIsOpen((prev) => !prev);
-    setUnreadCount(0);
   };
 
   const formatTime = useCallback((value) => {
@@ -117,7 +115,7 @@ export default function OrderNotifications() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-gray-900">
-                  طلب جديد!
+                  تم وصول طلب جديد!
                 </p>
                 <p className="text-sm text-gray-700 mt-0.5">
                   {toast.customer_name}
@@ -188,10 +186,10 @@ export default function OrderNotifications() {
             <span className="absolute bottom-1 left-1 w-2.5 h-2.5 bg-green-500 rounded-full border border-white"></span>
           )}
 
-          {/* عداد الطلبات الجديدة */}
-          {unreadCount > 0 && (
+          {/* عداد الطلبات تحت التجهيز (لا يوجد رد فعل بعد) */}
+          {pendingCount > 0 && (
             <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold border border-white shadow-sm">
-              {unreadCount > 99 ? "99+" : unreadCount}
+              {pendingCount > 99 ? "99+" : pendingCount}
             </span>
           )}
         </button>

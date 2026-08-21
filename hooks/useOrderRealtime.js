@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 
+const PENDING_STATUS = "تحت التجهيز";
+
 export function useOrderRealtime({ enabled = true } = {}) {
   const [connected, setConnected] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
   const [newOrders, setNewOrders] = useState([]);
-  const [statusUpdates, setStatusUpdates] = useState([]);
   const esRef = useRef(null);
 
   useEffect(() => {
@@ -40,18 +42,33 @@ export function useOrderRealtime({ enabled = true } = {}) {
 
           if (data.type === "connected") {
             setConnected(true);
+            if (typeof data.pendingCount === "number") {
+              setPendingCount(data.pendingCount);
+            }
             return;
           }
 
           if (data.type === "new" && data.order) {
             setNewOrders((prev) => [data.order, ...prev].slice(0, 50));
+            if (data.order.status === PENDING_STATUS) {
+              setPendingCount((prev) => prev + 1);
+            }
             window.dispatchEvent(
               new CustomEvent("order-created", { detail: data.order })
             );
           }
 
           if (data.type === "status" && data.order) {
-            setStatusUpdates((prev) => [data.order, ...prev].slice(0, 50));
+            const oldStatus = data.oldStatus;
+            const newStatus = data.order.status;
+            if (oldStatus === PENDING_STATUS && newStatus !== PENDING_STATUS) {
+              setPendingCount((prev) => Math.max(0, prev - 1));
+            } else if (
+              oldStatus !== PENDING_STATUS &&
+              newStatus === PENDING_STATUS
+            ) {
+              setPendingCount((prev) => prev + 1);
+            }
             window.dispatchEvent(
               new CustomEvent("order-updated", { detail: data.order })
             );
@@ -89,5 +106,5 @@ export function useOrderRealtime({ enabled = true } = {}) {
     };
   }, [enabled]);
 
-  return { connected, newOrders, statusUpdates };
+  return { connected, pendingCount, newOrders };
 }
