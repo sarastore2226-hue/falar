@@ -6,11 +6,12 @@ const prisma = new PrismaClient();
 // GET - جلب بيانات مستخدم محدد
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const user = await prisma.users.findUnique({
-      where: { userid: parseInt(params.id) },
+      where: { userid: parseInt(id, 10) },
       select: {
         userid: true,
         usercode: true,
@@ -43,13 +44,14 @@ export async function GET(
 // PUT - تحديث بيانات مستخدم
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { username, phone, position, permissions } = await request.json();
 
     const updatedUser = await prisma.users.update({
-      where: { userid: parseInt(params.id) },
+      where: { userid: parseInt(id, 10) },
       data: {
         ...(username && { username }),
         ...(phone !== undefined && { phone }),
@@ -85,11 +87,12 @@ export async function PUT(
 // DELETE - حذف مستخدم
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     await prisma.users.delete({
-      where: { userid: parseInt(params.id) }
+      where: { userid: parseInt(id, 10) }
     });
 
     return NextResponse.json({
