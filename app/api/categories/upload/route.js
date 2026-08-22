@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { v4 as uuidv4 } from "uuid";
+import sharp from "sharp";
 
 const r2 = new S3Client({
   region: "auto",
@@ -27,17 +28,23 @@ export async function POST(request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
+    const optimizedBuffer = await sharp(buffer)
+      .rotate()
+      .webp({ quality: 82 })
+      .toBuffer();
 
     const safeFileName = file.name
       .replace(/\s+/g, "-")
       .replace(/[^a-zA-Z0-9.\-_]/g, "");
-    const r2Key = `${uuidv4()}-${safeFileName}`;
+    const fileBaseName = safeFileName.replace(/\.[^.]+$/, "") || "category";
+    const r2Key = `${uuidv4()}-${fileBaseName}.webp`;
 
     const uploadCommand = new PutObjectCommand({
       Bucket: R2_BUCKET_NAME,
       Key: r2Key,
-      Body: buffer,
-      ContentType: file.type,
+      Body: optimizedBuffer,
+      ContentType: "image/webp",
+      CacheControl: "public, max-age=31536000, immutable",
     });
 
     await r2.send(uploadCommand);
