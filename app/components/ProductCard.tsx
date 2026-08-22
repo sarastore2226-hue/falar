@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 interface Product {
   modelId: string;
@@ -37,6 +38,7 @@ interface ProductCardProps {
 let employeeQuantitiesCache: Map<string, number> = new Map();
 
 export default function ProductCard({ product }: ProductCardProps) {
+  const router = useRouter();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
 
@@ -421,8 +423,12 @@ export default function ProductCard({ product }: ProductCardProps) {
           </div>
         )}
 
-        <Link
-          href={`/product/${product.modelId}`}
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            router.push(`/product/${product.modelId}`);
+          }}
           className="mt-auto w-full py-3 px-4 rounded-xl text-sm font-semibold transition-all duration-300 flex items-center justify-center space-x-2 space-x-reverse shadow-md hover:shadow-lg transform hover:translate-y-[-1px] active:translate-y-0 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white"
         >
           <svg
@@ -445,7 +451,7 @@ export default function ProductCard({ product }: ProductCardProps) {
             />
           </svg>
           <span>عرض التفاصيل</span>
-        </Link>
+        </button>
       </div>
     </Link>
   );
