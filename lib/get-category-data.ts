@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { normalizePublicImageUrl } from "./utils";
 
 const prisma = new PrismaClient();
 
@@ -30,7 +31,15 @@ export async function getCategoryData(categoryId: string) {
     }
 
     // جلب التصنيفات الفرعية التابعة لهذا التصنيف (مثلاً: بناتي -> فساتين، أطقم...)
-    const subCategories = categories.filter(
+    const normalizedCategories = categories.map((category) => ({
+      ...category,
+      image: normalizePublicImageUrl(category.image),
+    }));
+    const normalizedCurrentCategory = normalizedCategories.find(
+      (category) => category.id === id
+    );
+
+    const subCategories = normalizedCategories.filter(
       (cat) => cat.sub === currentCategory.name && cat.image
     );
 
@@ -117,7 +126,7 @@ export async function getCategoryData(categoryId: string) {
         if (row.images) {
           const img = row.images.trim();
           if (img.length > 10 && img !== "null") {
-            imageUrl = img;
+            imageUrl = normalizePublicImageUrl(img) || imageUrl;
           }
         }
 
@@ -172,8 +181,8 @@ export async function getCategoryData(categoryId: string) {
     return JSON.parse(
       JSON.stringify({
         products: filteredProducts,
-        categories,
-        currentCategory,
+        categories: normalizedCategories,
+        currentCategory: normalizedCurrentCategory,
         subCategories,
       })
     );

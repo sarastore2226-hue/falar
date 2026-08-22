@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { normalizePublicImageUrl } from "./utils";
 
 const prisma = new PrismaClient();
 
@@ -76,12 +77,23 @@ export async function getHomeData() {
       }
     });
 
-    const finalProducts = Object.values(groupedByMasterCode);
+    const finalProducts = Object.values(groupedByMasterCode).map((product: any) => ({
+      ...product,
+      variants: product.variants.map((variant: any) => ({
+        ...variant,
+        imageUrl: normalizePublicImageUrl(variant.imageUrl),
+      })),
+    }));
+
+    const normalizedCategories = categories.map((category) => ({
+      ...category,
+      image: normalizePublicImageUrl(category.image),
+    }));
 
     // تسلسل البيانات لتجنب مشاكل التواريخ في Next.js
     return JSON.parse(JSON.stringify({ 
         products: finalProducts, 
-        categories 
+        categories: normalizedCategories
     }));
 
   } catch (error) {
