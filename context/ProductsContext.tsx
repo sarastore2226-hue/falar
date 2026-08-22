@@ -8,6 +8,7 @@ import React, {
   ReactNode,
   useCallback,
 } from "react";
+import { usePathname } from "next/navigation";
 
 interface Product {
   modelId: string;
@@ -55,6 +56,7 @@ const ProductsContext = createContext<ProductsContextType | undefined>(
 );
 
 export function ProductsProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -68,7 +70,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       const employee = localStorage.getItem("employee");
       const employeeToken = localStorage.getItem("employeeToken");
       return !!(employee && employeeToken);
-    } catch (error) {
+    } catch {
       return false;
     }
   };
@@ -80,6 +82,19 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       setError("");
 
       const isEmployee = checkIsEmployee();
+
+      const isFilteredCategoryPage =
+        pathname.startsWith("/category/gender/") ||
+        pathname.startsWith("/category/type/") ||
+        pathname.startsWith("/categories/");
+
+      if (isFilteredCategoryPage) {
+        const response = await fetch("/api/categories");
+        if (!response.ok) throw new Error(`فشل الاتصال: ${response.status}`);
+        setCategories(await response.json());
+        setProducts([]);
+        return;
+      }
       
       // ✅ استخدام الـ API الموحد السريع مع تحديد limit
       // نطلب 100 منتج فقط للصفحة الرئيسية لضمان السرعة القصوى
@@ -110,7 +125,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       
       console.log(`✅ تم تحميل ${data.products.length} منتج بنجاح`);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("❌ Error fetching data:", err);
       setError("حدث خطأ في الاتصال بالخادم. يرجى المحاولة مرة أخرى.");
       // لا نستخدم بيانات وهمية لتجنب تضليل المستخدم
@@ -118,7 +133,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pathname]);
 
   // ✅ دالة إعادة الجلب اليدوية
   const refetchData = () => {
