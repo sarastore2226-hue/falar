@@ -7,7 +7,15 @@ export async function getCategoryData(categoryId: string) {
     const id = parseInt(categoryId);
 
     // 1. جلب كل التصنيفات لتحديد التصنيف الحالي والفرعي
-    const categories = await prisma.categories.findMany();
+    const categories = await prisma.categories.findMany({
+      select: {
+        id: true,
+        name: true,
+        kind: true,
+        image: true,
+        sub: true,
+      },
+    });
 
     // البحث عن التصنيف الحالي
     const currentCategory = categories.find((cat) => cat.id === id);
@@ -46,6 +54,19 @@ export async function getCategoryData(categoryId: string) {
             item_name: { contains: currentCategory.name, mode: "insensitive" },
           },
         ],
+      },
+      select: {
+        unique_id: true,
+        master_code: true,
+        item_code: true,
+        item_name: true,
+        color: true,
+        size: true,
+        cur_qty: true,
+        out_price: true,
+        group_name: true,
+        kind_name: true,
+        images: true,
       },
       orderBy: { unique_id: "desc" }, // ترتيب بالأحدث
     });
