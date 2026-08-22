@@ -52,6 +52,8 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl">
       <head>
+        <link rel="preconnect" href="https://images.vooy.shop" />
+        <link rel="dns-prefetch" href="//images.vooy.shop" />
         <link rel="icon" href="/favicon.ico" />
         <link
           rel="apple-touch-icon"

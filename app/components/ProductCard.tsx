@@ -233,6 +233,7 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
           className="w-full h-full object-contain transition-transform duration-300 ease-in-out group-hover:scale-105"
           loading={priority ? "eager" : "lazy"}
           fetchPriority={priority ? "high" : "auto"}
+          decoding="async"
         />
 
         {isEmployee && (
