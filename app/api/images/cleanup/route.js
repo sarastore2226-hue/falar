@@ -50,7 +50,16 @@ async function getUsedImageKeys() {
     for (const singleUrl of urls) {
       if (!singleUrl) continue;
       if (singleUrl.startsWith(R2_PUBLIC_URL)) {
-        usedKeys.add(singleUrl.replace(`${R2_PUBLIC_URL}/`, ""));
+        const key = singleUrl.replace(`${R2_PUBLIC_URL}/`, "");
+        usedKeys.add(key);
+
+        // كل رابط للنسخة 660 يمثل أيضًا نسختي 320 و1024 لنفس الصورة.
+        const variantMatch = key.match(/^(.*)-(320|660|1024)\.webp$/i);
+        if (variantMatch) {
+          for (const size of [320, 660, 1024]) {
+            usedKeys.add(`${variantMatch[1]}-${size}.webp`);
+          }
+        }
       }
     }
   }

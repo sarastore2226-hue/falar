@@ -6,6 +6,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { PrismaClient } from "@prisma/client";
 import { v4 as uuidv4 } from "uuid";
+import sharp from "sharp";
 
 const prisma = new PrismaClient();
 
@@ -52,20 +53,32 @@ export async function POST(request) {
         const safeFileName = originalName
           .replace(/\s+/g, "-")
           .replace(/[^a-zA-Z0-9.\-_]/g, "");
-        const r2Key = `${uuidv4()}-${safeFileName}`;
+        const fileBaseName = safeFileName.replace(/\.[^.]+$/, "") || uuidv4();
+        const imageBaseKey = `${uuidv4()}-${fileBaseName}`;
+        const imageSizes = [320, 660, 1024];
 
-        // إعداد أمر الرفع
-        const uploadCommand = new PutObjectCommand({
-          Bucket: R2_BUCKET_NAME,
-          Key: r2Key,
-          Body: buffer,
-          ContentType: file.type,
-        });
+        await Promise.all(
+          imageSizes.map(async (size) => {
+            const optimizedBuffer = await sharp(buffer)
+              .rotate()
+              .resize({ width: size, withoutEnlargement: true })
+              .webp({ quality: 82 })
+              .toBuffer();
 
-        // تنفيذ الرفع
-        await r2.send(uploadCommand);
+            await r2.send(
+              new PutObjectCommand({
+                Bucket: R2_BUCKET_NAME,
+                Key: `${imageBaseKey}-${size}.webp`,
+                Body: optimizedBuffer,
+                ContentType: "image/webp",
+                CacheControl: "public, max-age=31536000, immutable",
+              })
+            );
+          })
+        );
 
-        const imageUrl = `${R2_PUBLIC_URL}/${r2Key}`;
+        // نخزن نسخة 660 كالرابط الأساسي، وتُشتق منه بقية الأحجام في الواجهة.
+        const imageUrl = `${R2_PUBLIC_URL}/${imageBaseKey}-660.webp`;
 
         // 1. البحث عن المنتج المطابق لتحديث صورته
         const product = await prisma.products.findFirst({
@@ -184,13 +197,22 @@ export async function DELETE(request) {
 
     // 2. الحذف من Cloudflare R2
     try {
-      const deleteCommand = new DeleteObjectCommand({
-        Bucket: R2_BUCKET_NAME,
-        Key: fileKey,
-      });
+      const variantMatch = fileKey.match(/^(.*)-(320|660|1024)\.webp$/i);
+      const fileKeys = variantMatch
+        ? [320, 660, 1024].map((size) => `${variantMatch[1]}-${size}.webp`)
+        : [fileKey];
 
-      await r2.send(deleteCommand);
-      console.log("✅ تم الحذف من R2:", fileKey);
+      await Promise.all(
+        fileKeys.map((key) =>
+          r2.send(
+            new DeleteObjectCommand({
+              Bucket: R2_BUCKET_NAME,
+              Key: key,
+            })
+          )
+        )
+      );
+      console.log("✅ تم حذف نسخ الصورة من R2:", fileKeys);
     } catch (r2Error) {
       console.error(
         "⚠️ خطأ في حذف الملف من R2 (قد يكون غير موجود):",

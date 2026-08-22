@@ -111,8 +111,12 @@ export default function HomeClient({ initialProducts, initialCategories }: any) 
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-            {displayProducts.map((product: any) => (
-              <ProductCard key={product.modelId} product={product} />
+            {displayProducts.map((product: any, index: number) => (
+              <ProductCard
+                key={product.modelId}
+                product={product}
+                priority={index < 4}
+              />
             ))}
           </div>
           

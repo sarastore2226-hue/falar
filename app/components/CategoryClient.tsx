@@ -116,8 +116,12 @@ export default function CategoryClient({
         {paginatedProducts.length > 0 ? (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {paginatedProducts.map((product: any) => (
-                <ProductCard key={product.modelId} product={product} />
+              {paginatedProducts.map((product: any, index: number) => (
+                <ProductCard
+                  key={product.modelId}
+                  product={product}
+                  priority={index < 4}
+                />
               ))}
             </div>
 
