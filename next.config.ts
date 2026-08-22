@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: 'pub-3ff77cba2e6f472094c4271d8b4e68a9.r2.dev', // دومين R2 الخاص بك
+        hostname: 'images.vooy.shop',
         port: '',
         pathname: '/**',
       },
