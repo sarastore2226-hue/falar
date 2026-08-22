@@ -513,7 +513,7 @@ export default function CartPage() {
                 <button
                   onClick={handleSubmitOrder}
                   disabled={isSubmitting}
-                  className="w-full btn-primary py-4 text-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full rounded-xl border-2 border-emerald-700 bg-emerald-600 px-4 py-4 text-lg font-bold text-white shadow-lg shadow-emerald-600/25 transition-all duration-200 hover:bg-emerald-700 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-emerald-200 disabled:cursor-not-allowed disabled:border-gray-400 disabled:bg-gray-400 disabled:shadow-none"
                 >
                   {isSubmitting ? "جاري إرسال الطلب..." : "إتمام الشراء"}
                 </button>
