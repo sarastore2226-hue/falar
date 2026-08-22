@@ -2,6 +2,7 @@ import { getCategoryData } from "@/lib/get-category-data";
 import CategoryClient from "@/app/components/CategoryClient";
 
 export const revalidate = 60; // تحديث البيانات كل 60 ثانية
+export const dynamic = "force-static";
 
 export default async function CategoryPage({
   params,
