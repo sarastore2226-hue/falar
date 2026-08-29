@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Header from "./Header";
 import ProductCard from "./ProductCard";
 import Pagination from "./Pagination";
+import Link from "next/link";
 
 export default function CategoryClient({ 
   initialProducts, 
@@ -27,6 +28,16 @@ export default function CategoryClient({
   useEffect(() => {
     setIsEmployee(!!localStorage.getItem("employee"));
   }, []);
+
+  // تقسيم التصنيفات الفرعية:
+  // - رئيسي من رئيسي (لديه تصنيفات فرعية) -> يُعرض بصور كبيرة وينقّل لصفحته
+  // - فرعي (لا يملك تصنيفات) -> يظل كما هو (أزرار دائرية لفلترة المنتجات)
+  const mainSubCategories = (subCategories || []).filter((sub: any) =>
+    (categories || []).some((c: any) => c.sub === sub.name)
+  );
+  const leafSubCategories = (subCategories || []).filter((sub: any) =>
+    !(categories || []).some((c: any) => c.sub === sub.name)
+  );
 
   // منطق الفلترة (بحث + تصنيف فرعي)
   useEffect(() => {
@@ -83,6 +94,29 @@ export default function CategoryClient({
           <p className="text-gray-600">تصفح أحدث المنتجات</p>
         </div>
 
+        {/* Main-from-main Sub Categories: صور كبيرة تنتقل لصفحة التصنيف */}
+        {mainSubCategories.length > 0 && (
+          <div className="mb-10">
+            <h2 className="text-2xl font-bold text-gray-900 text-center mb-8">أقسام {currentCategory?.name}</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8 justify-items-center">
+              {mainSubCategories.map((sub: any) => (
+                <Link key={sub.id} href={`/categories/${sub.id}`} className="group text-center block">
+                  <div className="bg-white rounded-[60px_20px_60px_20px] p-4 shadow-lg w-40 h-48 md:w-64 md:h-72 flex flex-col justify-end items-center overflow-hidden transition-all duration-300 group-hover:shadow-xl group-hover:scale-105 relative">
+                    <div className="absolute inset-0 w-full h-full flex justify-center items-center">
+                      <img src={sub.image} alt={sub.name} className="w-full h-full object-cover rounded-2xl" loading="lazy" />
+                    </div>
+                    <div className="relative z-10 w-full pt-32 md:pt-48">
+                      <div className="bg-white/90 backdrop-blur-sm rounded-full mx-4 py-3 px-4 border border-white/50">
+                        <p className="text-gray-800 text-lg font-bold text-center">{sub.name}</p>
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Search */}
         <div className="mb-6 bg-white rounded-xl shadow-sm p-4 border border-gray-200">
           <input
@@ -94,10 +128,10 @@ export default function CategoryClient({
           />
         </div>
 
-        {/* Sub Categories */}
-        {subCategories.length > 0 && (
+        {/* Leaf Sub Categories: تظل كما هي كأزرار فلترة */}
+        {leafSubCategories.length > 0 && (
           <div className="flex overflow-x-auto gap-4 mb-8 pb-4">
-            {subCategories.map((sub: any) => (
+            {leafSubCategories.map((sub: any) => (
               <button
                 key={sub.id}
                 onClick={() => handleSubCategoryClick(sub.name)}
@@ -131,6 +165,10 @@ export default function CategoryClient({
                 <Pagination
                   currentPage={currentPage}
                   totalPages={Math.ceil(filteredProducts.length / limit)}
+                  totalProducts={filteredProducts.length}
+                  limit={limit}
+                  hasNextPage={currentPage < Math.ceil(filteredProducts.length / limit)}
+                  hasPrevPage={currentPage > 1}
                   onPageChange={setCurrentPage}
                 />
               </div>

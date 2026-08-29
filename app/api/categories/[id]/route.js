@@ -96,6 +96,26 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: "التصنيف غير موجود" }, { status: 404 });
     }
 
+    // ✅ منع إنشاء دورات: لا يمكن أن يكون التصنيف فرعاً من نفسه أو من أحد فروعه
+    if (data.sub && data.sub !== category.name) {
+      let parentName = data.sub;
+      const visited = new Set();
+      while (parentName && !visited.has(parentName)) {
+        visited.add(parentName);
+        if (parentName === category.name) {
+          return NextResponse.json(
+            { error: "لا يمكن أن يكون التصنيف فرعاً من نفسه أو من أحد فروعه" },
+            { status: 400 }
+          );
+        }
+        const parent = await prisma.categories.findFirst({
+          where: { name: parentName },
+        });
+        if (!parent) break;
+        parentName = parent.sub;
+      }
+    }
+
     const updatedCategory = await prisma.categories.update({
       where: { id: category.id },
       data: {

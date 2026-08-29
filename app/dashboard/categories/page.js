@@ -66,9 +66,47 @@ export default function CategoriesManagement() {
     }
   };
 
-  // ✅ الحصول على التصنيفات الرئيسية (نوع "جنس") فقط
+  // ✅ بناء خريطة الأبناء لكل تصنيف
+  const getChildrenMap = (cats) => {
+    const map = {};
+    cats.forEach((c) => {
+      if (c.sub) {
+        if (!map[c.sub]) map[c.sub] = [];
+        map[c.sub].push(c);
+      }
+    });
+    return map;
+  };
+
+  // ✅ الحصول على جميع أحفاد التصنيف (لمنع الدورات)
+  const getDescendants = (name, cats) => {
+    const childrenMap = getChildrenMap(cats);
+    const result = [];
+    const stack = [name];
+    while (stack.length) {
+      const current = stack.pop();
+      (childrenMap[current] || []).forEach((child) => {
+        result.push(child.name);
+        stack.push(child.name);
+      });
+    }
+    return result;
+  };
+
+  // ✅ الحصول على التصنيفات الرئيسية (جنس + نوع لتسمح بالتفريع رئيسي من رئيسي)
   const getParentCategories = () => {
-    return categories.filter((category) => category.kind === "جنس");
+    const exclusions = new Set();
+    if (editingCategory) {
+      exclusions.add(editingCategory.name);
+      getDescendants(editingCategory.name, categories).forEach((n) =>
+        exclusions.add(n)
+      );
+    }
+    return categories.filter(
+      (category) =>
+        (category.kind === "جنس" || category.kind === "نوع") &&
+        !exclusions.has(category.name)
+    );
   };
 
   const handleSubmit = async (e) => {
@@ -78,8 +116,8 @@ export default function CategoriesManagement() {
       const url = editingCategory ? "/api/categories" : "/api/categories";
       const method = editingCategory ? "PUT" : "POST";
 
-      // ✅ تعديل المنطق: "جنس" و "خلفية" لا يحتاجان إلى sub
-      const needsSub = formData.kind === "نوع";
+      // ✅ "جنس" و "نوع" يمكن أن يكونا فرعاً من تصنيف رئيسي (رئيسي من رئيسي)؛ فقط "خلفية" لا تحتاج أب
+      const needsSub = formData.kind === "جنس" || formData.kind === "نوع";
       
       const submitData = {
         ...formData,
@@ -157,8 +195,8 @@ export default function CategoriesManagement() {
     setFormData({
       ...formData,
       kind,
-      // تصفير التصنيف الفرعي إذا لم يكن النوع "نوع"
-      sub: kind === "نوع" ? formData.sub : "",
+      // تصفير التصنيف الفرعي إذا كان النوع "خلفية" فقط
+      sub: kind === "خلفية" ? "" : formData.sub,
     });
   };
 
@@ -426,32 +464,31 @@ export default function CategoriesManagement() {
                     
                     {/* شرح توضيحي ديناميكي */}
                     <div className="mt-2 text-xs text-gray-500 bg-gray-50 p-2 rounded border border-gray-100">
-                      {formData.kind === "جنس" && "التصنيفات الرئيسية مثل: أولاد، بنات"}
-                      {formData.kind === "نوع" && "التصنيفات الفرعية مثل: تيشيرت، بنطلون (تتطلب تصنيف رئيسي)"}
+                      {formData.kind === "جنس" && "التصنيفات الرئيسية مثل: أولاد، بنات (يمكن أن يتفرع من جنس رئيسي آخر)"}
+                      {formData.kind === "نوع" && "التصنيفات الفرعية مثل: تيشيرت، بنطلون (يمكن أن يكون تصنيفها الرئيسي جنس أو نوع فرعي آخر - تفريع رئيسي من رئيسي)"}
                       {formData.kind === "خلفية" && "صور العرض الرئيسية (Banners) في الصفحة الرئيسية"}
                     </div>
                   </div>
 
-                  {/* ✅ حقل التصنيف الفرعي (يظهر فقط للنوع "نوع") */}
-                  <div className={`transition-all duration-300 ${formData.kind !== "نوع" ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
+                  {/* ✅ حقل التصنيف الرئيسي (اختياري؛ يظهر لجنس ونوع للسماح بالتفريع، غير متاح لخلفية) */}
+                  <div className={`transition-all duration-300 ${formData.kind === "خلفية" ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {formData.kind === "نوع" ? "التصنيف الرئيسي *" : "التصنيف الرئيسي"}
+                      التصنيف الرئيسي
                     </label>
                     <select
                       value={formData.sub}
                       onChange={(e) =>
                         setFormData({ ...formData, sub: e.target.value })
                       }
-                      disabled={formData.kind !== "نوع"}
-                      required={formData.kind === "نوع"}
+                      disabled={formData.kind === "خلفية"}
                       className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        formData.kind !== "نوع" ? "bg-gray-100 text-gray-400" : ""
+                        formData.kind === "خلفية" ? "bg-gray-100 text-gray-400" : ""
                       }`}
                     >
                       <option value="">
-                        {formData.kind !== "نوع"
-                          ? "غير مطلوب لهذا النوع"
-                          : "اختر التصنيف الرئيسي"}
+                        {formData.kind === "خلفية"
+                          ? "غير متاح لهذا النوع"
+                          : "لا يوجد (تصنيف رئيسي مستقل)"}
                       </option>
                       {getParentCategories().map((parent) => (
                         <option key={parent.id} value={parent.name}>
@@ -459,6 +496,9 @@ export default function CategoriesManagement() {
                         </option>
                       ))}
                     </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      اختر تصنيفاً رئيسياً لتفريع هذا التصنيف منه، أو اتركه "لا يوجد" ليكون تصنيفاً رئيسياً مستقلاً
+                    </p>
                   </div>
 
                   <div className="flex gap-2 pt-4">

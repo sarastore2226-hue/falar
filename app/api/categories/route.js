@@ -81,8 +81,40 @@ export async function PUT(request) {
       );
     }
 
+    const categoryId = parseInt(id);
+    const existingCategory = await prisma.categories.findUnique({
+      where: { id: categoryId },
+    });
+
+    if (!existingCategory) {
+      return NextResponse.json(
+        { error: "التصنيف غير موجود" },
+        { status: 404 }
+      );
+    }
+
+    // ✅ منع إنشاء دورات: لا يمكن أن يكون التصنيف فرعاً من نفسه أو من أحد فروعه
+    if (sub && sub !== existingCategory.name) {
+      let parentName = sub;
+      const visited = new Set();
+      while (parentName && !visited.has(parentName)) {
+        visited.add(parentName);
+        if (parentName === existingCategory.name) {
+          return NextResponse.json(
+            { error: "لا يمكن أن يكون التصنيف فرعاً من نفسه أو من أحد فروعه" },
+            { status: 400 }
+          );
+        }
+        const parent = await prisma.categories.findFirst({
+          where: { name: parentName },
+        });
+        if (!parent) break;
+        parentName = parent.sub;
+      }
+    }
+
     const category = await prisma.categories.update({
-      where: { id: parseInt(id) },
+      where: { id: categoryId },
       data: {
         ...(name && { name }),
         ...(image !== undefined && { image }),
