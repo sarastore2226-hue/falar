@@ -33,7 +33,7 @@ export default function HomeClient({ initialProducts, initialCategories }: any) 
   // ✅ تجهيز التصنيفات وصورة الهيرو
   const displayCategories = useMemo(() => {
     return initialCategories
-      .filter((cat: any) => cat.kind === "جنس" && cat.name !== "خلفية" && cat.image)
+      .filter((cat: any) => cat.kind === "جنس" && !cat.sub && cat.name !== "خلفية" && cat.image)
       .slice(0, 8);
   }, [initialCategories]);
 

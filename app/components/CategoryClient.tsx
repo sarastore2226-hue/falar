@@ -30,13 +30,14 @@ export default function CategoryClient({
   }, []);
 
   // تقسيم التصنيفات الفرعية:
-  // - رئيسي من رئيسي (لديه تصنيفات فرعية) -> يُعرض بصور كبيرة وينقّل لصفحته
-  // - فرعي (لا يملك تصنيفات) -> يظل كما هو (أزرار دائرية لفلترة المنتجات)
-  const mainSubCategories = (subCategories || []).filter((sub: any) =>
-    (categories || []).some((c: any) => c.sub === sub.name)
-  );
-  const leafSubCategories = (subCategories || []).filter((sub: any) =>
-    !(categories || []).some((c: any) => c.sub === sub.name)
+  // - رئيسي من رئيسي (نوعه "جنس" ومتفرع من أب، أو لديه تصنيفات فرعية) -> يُعرض بصور كبيرة وينقّل لصفحته
+  // - فرعي نهائي (نوعه "نوع" بلا فروع) -> يظل كما هو (أزرار دائرية لفلترة المنتجات)
+  const isMainBranch = (sub: any) =>
+    sub.kind === "جنس" ||
+    (categories || []).some((c: any) => c.sub === sub.name);
+  const mainSubCategories = (subCategories || []).filter(isMainBranch);
+  const leafSubCategories = (subCategories || []).filter(
+    (sub: any) => !isMainBranch(sub)
   );
 
   // منطق الفلترة (بحث + تصنيف فرعي)
