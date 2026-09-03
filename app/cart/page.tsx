@@ -13,6 +13,9 @@ export default function CartPage() {
   const [orderError, setOrderError] = useState("");
   const [pricedItems, setPricedItems] = useState(cartItems);
   const [promotionTotal, setPromotionTotal] = useState<number | null>(null);
+  const [appliedPromotions, setAppliedPromotions] = useState<
+    Array<{ name: string; category: string; quantity: number; savings: number }>
+  >([]);
 
   // بيانات العميل - سيتم ملؤها تلقائياً
   const [customerData, setCustomerData] = useState({
@@ -26,6 +29,7 @@ export default function CartPage() {
     if (cartItems.length === 0) {
       setPricedItems([]);
       setPromotionTotal(0);
+      setAppliedPromotions([]);
       return () => { cancelled = true; };
     }
     fetch("/api/promotions/calculate", {
@@ -50,10 +54,14 @@ export default function CartPage() {
             }))
           );
           setPromotionTotal(result.total);
+          setAppliedPromotions(result.appliedPromotions || []);
         }
       })
       .catch(() => {
-        if (!cancelled) setPromotionTotal(null);
+        if (!cancelled) {
+          setPromotionTotal(null);
+          setAppliedPromotions([]);
+        }
       });
     return () => { cancelled = true; };
   }, [cartItems]);
@@ -271,6 +279,17 @@ export default function CartPage() {
                   )}
                 </span>
               </div>
+
+              {appliedPromotions.length > 0 && (
+                <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4 text-green-900">
+                  <p className="font-bold">تم تطبيق العرض على طلبك</p>
+                  {appliedPromotions.map((promotion) => (
+                    <p key={`${promotion.name}-${promotion.category}`} className="mt-1 text-sm">
+                      {promotion.name}: {promotion.quantity} قطع، وفرت {promotion.savings.toLocaleString()} ج.م
+                    </p>
+                  ))}
+                </div>
+              )}
 
               <div className="space-y-6">
                 {pricedItems.map((item) => (

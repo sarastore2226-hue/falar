@@ -57,7 +57,13 @@ export async function pricePromotionItems(
     (sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0),
     0
   );
-  const appliedPromotions: Array<{ category: string; quantity: number; total: number }> = [];
+  const appliedPromotions: Array<{
+    name: string;
+    category: string;
+    quantity: number;
+    total: number;
+    savings: number;
+  }> = [];
 
   for (const [category, group] of grouped) {
     const promotion = await prisma.promotions.findFirst({
@@ -89,7 +95,13 @@ export async function pricePromotionItems(
       pricedItems[index].finalUnitPrice = (Number(items[index].price) || 0) * ratio;
     });
     total -= group.baseTotal - promotedTotal;
-    appliedPromotions.push({ category, quantity: group.quantity, total: promotedTotal });
+    appliedPromotions.push({
+      name: promotion.name,
+      category,
+      quantity: group.quantity,
+      total: promotedTotal,
+      savings: group.baseTotal - promotedTotal,
+    });
   }
 
   return { items: pricedItems, total: Math.max(0, total), appliedPromotions };
