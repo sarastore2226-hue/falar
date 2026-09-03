@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { pricePromotionItems } from "../../../lib/promotions";
 
 const prisma = new PrismaClient();
 
@@ -11,6 +12,7 @@ interface OrderItem {
   quantity: number;
   price: number;
   item_code?: string;
+  category?: string;
 }
 
 interface OrderRequest {
@@ -51,6 +53,7 @@ export async function POST(request: Request) {
 
     const { customer_name, address, phone, items, total_price } = orderData;
     const newOrderId = "ORD-" + new Date().getTime(); // Generate a unique order ID
+    const pricedOrder = await pricePromotionItems(prisma, items);
 
     // ✅ تعديل: دمج اسم المنتج + اللون + المقاس في عمود product
     const orderItemsWithMergedNames = items.map((item) => ({
@@ -98,19 +101,19 @@ export async function POST(request: Request) {
           customer_name: customer_name,
           address: address,
           phone: phone,
-          total_price: total_price,
+          total_price: pricedOrder.total,
           status: "تحت التجهيز",
         },
       });
 
       // Create the associated order items
-      for (const item of orderItemsWithMergedNames) { // ✅ استخدام البيانات المدمجة
+      for (const [index, item] of orderItemsWithMergedNames.entries()) { // ✅ استخدام البيانات المدمجة
         await tx.order_items.create({
           data: {
             order_id: newOrderId,
             product: item.product, // ✅ الآن يحتوي على الاسم + اللون + المقاس
             quantity: item.quantity,
-            price: item.price,
+            price: pricedOrder.items[index].finalUnitPrice,
             color: item.color || "",
             item_code: item.item_code || "",
           },

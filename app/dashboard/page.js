@@ -154,6 +154,15 @@ export default function Dashboard() {
         count: `${stats.categoriesCount} تصنيف`,
       },
       {
+        title: "إدارة العروض",
+        description: "تحديد أسعار الباقات حسب التصنيف والكمية",
+        icon: "🏷️",
+        href: "/dashboard/promotions",
+        color: "from-rose-500 to-rose-600",
+        bgColor: "bg-rose-50",
+        count: "عروض التصنيفات",
+      },
+      {
         title: "رفع الصور",
         description: "رفع الصور وربطها تلقائياً مع المنتجات",
         icon: "🖼️",

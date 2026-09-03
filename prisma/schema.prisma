@@ -46,6 +46,34 @@ model categories {
   image    String?  @db.Text
   kind     String   @db.VarChar(100)
   sub      String?  @db.VarChar(100)
+
+  promotions promotions[]
+}
+
+model promotions {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(255)
+  category_id Int
+  active      Boolean   @default(true)
+  starts_at   DateTime?
+  ends_at     DateTime?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  category categories         @relation(fields: [category_id], references: [id], onDelete: Cascade)
+  tiers    promotion_tiers[]
+}
+
+model promotion_tiers {
+  id            Int      @id @default(autoincrement())
+  promotion_id  Int
+  min_quantity  Int
+  bundle_price  Decimal  @db.Decimal(19, 4)
+
+  promotion promotions @relation(fields: [promotion_id], references: [id], onDelete: Cascade)
+
+  @@unique([promotion_id, min_quantity])
+  @@index([promotion_id, min_quantity])
 }
 
 model orders {

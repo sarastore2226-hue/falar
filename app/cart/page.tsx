@@ -11,6 +11,8 @@ export default function CartPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
   const [orderError, setOrderError] = useState("");
+  const [pricedItems, setPricedItems] = useState(cartItems);
+  const [promotionTotal, setPromotionTotal] = useState<number | null>(null);
 
   // بيانات العميل - سيتم ملؤها تلقائياً
   const [customerData, setCustomerData] = useState({
@@ -19,7 +21,44 @@ export default function CartPage() {
     phone: "",
   });
 
-  const subtotal = getCartTotal();
+  useEffect(() => {
+    let cancelled = false;
+    if (cartItems.length === 0) {
+      setPricedItems([]);
+      setPromotionTotal(0);
+      return () => { cancelled = true; };
+    }
+    fetch("/api/promotions/calculate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: cartItems.map((item) => ({
+          product: item.name,
+          category: item.category,
+          quantity: item.quantity || 1,
+          price: item.price || 0,
+        })),
+      }),
+    })
+      .then((response) => response.json())
+      .then((result) => {
+        if (!cancelled && result.success) {
+          setPricedItems(
+            cartItems.map((item, index) => ({
+              ...item,
+              price: result.items[index]?.finalUnitPrice ?? item.price,
+            }))
+          );
+          setPromotionTotal(result.total);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPromotionTotal(null);
+      });
+    return () => { cancelled = true; };
+  }, [cartItems]);
+
+  const subtotal = promotionTotal ?? getCartTotal();
   // ✅ إلغاء الشحن والضريبة
   const shipping = 0; // مجاني دائماً
   const tax = 0; // إلغاء الضريبة
@@ -72,6 +111,7 @@ export default function CartPage() {
           price: item.price || 0,
           color: item.color,
           size: item.size,
+          category: item.category,
           item_code: item.item_code || item.master_code,
           master_code: item.master_code,
         })),
@@ -233,7 +273,7 @@ export default function CartPage() {
               </div>
 
               <div className="space-y-6">
-                {cartItems.map((item) => (
+                {pricedItems.map((item) => (
                   <div
                     key={item.id}
                     className="flex flex-col sm:flex-row gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200 hover:border-blue-300 transition-all duration-300"

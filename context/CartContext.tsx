@@ -18,6 +18,7 @@ interface CartItem {
   image: string;
   item_code?: string;
   master_code?: string;
+  category?: string;
   modelId?: string; // ✅ حفظ modelId الأصلي
   maxQuantity?: number;
 }
@@ -125,7 +126,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         updatedItems[existingItemIndex] = {
           ...existingItem,
           quantity: newQuantity,
-          price: Number.isFinite(selectedPrice)
+          price: typeof selectedPrice === "number" && Number.isFinite(selectedPrice)
             ? selectedPrice
             : existingItem.price,
         };
@@ -155,13 +156,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
         const newItem: CartItem = {
           id: itemId, // ✅ استخدام ID فريد
           name: product.item_name || product.description,
-          price: Number.isFinite(selectedPrice) ? selectedPrice : product.price,
+          price:
+            typeof selectedPrice === "number" && Number.isFinite(selectedPrice)
+              ? selectedPrice
+              : product.price,
           color: color || "افتراضي",
           size: size || "ONE SIZE",
           quantity: quantity,
           image: selectedVariant?.imageUrl || product.variants[0]?.imageUrl || "/placeholder-product.jpg",
           item_code: correctItemCode,
           master_code: product.master_code,
+          category: product.category || product.group_name || product.kind_name || "",
           modelId: product.modelId, // ✅ حفظ modelId الأصلي
           // ✅ حفظ أقصى كمية للموظفين
           maxQuantity:
