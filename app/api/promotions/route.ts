@@ -17,8 +17,19 @@ function normalizeTiers(tiers: unknown) {
   return result;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const activeOnly = new URL(request.url).searchParams.get("active") === "true";
+  const now = new Date();
   const promotions = await prisma.promotions.findMany({
+    where: activeOnly
+      ? {
+          active: true,
+          AND: [
+            { OR: [{ starts_at: null }, { starts_at: { lte: now } }] },
+            { OR: [{ ends_at: null }, { ends_at: { gte: now } }] },
+          ],
+        }
+      : undefined,
     include: { category: true, tiers: { orderBy: { min_quantity: "asc" } } },
     orderBy: { created_at: "desc" },
   });

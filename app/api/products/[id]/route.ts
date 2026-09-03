@@ -225,3 +225,45 @@ export async function PUT(
     );
   }
 }
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const productId = String(id).trim();
+
+    if (!productId) {
+      return NextResponse.json(
+        { success: false, error: "معرف المنتج مطلوب" },
+        { status: 400 }
+      );
+    }
+
+    const result = await prisma.products.deleteMany({
+      where: {
+        OR: [{ master_code: productId }, { unique_id: productId }],
+      },
+    });
+
+    if (result.count === 0) {
+      return NextResponse.json(
+        { success: false, error: "المنتج غير موجود" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "تم حذف الموديل وجميع نسخه بنجاح",
+      deletedCount: result.count,
+    });
+  } catch (error) {
+    console.error("❌ Error deleting product:", error);
+    return NextResponse.json(
+      { success: false, error: "فشل في حذف المنتج" },
+      { status: 500 }
+    );
+  }
+}

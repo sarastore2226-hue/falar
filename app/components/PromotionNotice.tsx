@@ -1,16 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getActivePromotions } from "./promotion-cache";
 
-type Promotion = {
-  id: number;
-  name: string;
-  active: boolean;
-  starts_at?: string | null;
-  ends_at?: string | null;
-  category?: { name: string };
-  tiers: Array<{ id: number; min_quantity: number; bundle_price: number }>;
-};
+type Promotion = Awaited<ReturnType<typeof getActivePromotions>> extends Array<infer Item>
+  ? Item
+  : never;
 
 type PromotionNoticeProps = {
   category?: string;
@@ -29,9 +24,7 @@ export default function PromotionNotice({
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/promotions")
-      .then((response) => (response.ok ? response.json() : []))
-      .then((data: Promotion[]) => {
+    getActivePromotions().then((data: Promotion[]) => {
         if (cancelled) return;
         const activePromotions = data.filter(
           (promotion) =>
@@ -44,9 +37,6 @@ export default function PromotionNotice({
         );
         setPromotions(activePromotions);
       })
-      .catch(() => {
-        if (!cancelled) setPromotions([]);
-      });
 
     return () => {
       cancelled = true;
