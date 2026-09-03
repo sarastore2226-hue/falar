@@ -343,7 +343,11 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
           </div>
         </div>
 
-        <PromotionNotice category={product.category} />
+        <PromotionNotice
+          category={product.category}
+          product={product.description}
+          compact
+        />
 
         <div className="flex justify-between items-center text-xs text-gray-500 mb-4">
           <span className="truncate bg-gray-100 px-2 py-1 rounded-full">

@@ -37,13 +37,26 @@ export async function pricePromotionItems(
   prisma: Pick<PrismaClient, "promotions">,
   items: PromotionInputItem[]
 ) {
-  const grouped = new Map<string, { indexes: number[]; quantity: number; baseTotal: number }>();
+  const grouped = new Map<string, {
+    indexes: number[];
+    quantity: number;
+    baseTotal: number;
+    productNames: string[];
+  }>();
 
   items.forEach((item, index) => {
     const category = item.category?.trim();
     if (!category) return;
-    const group = grouped.get(category) || { indexes: [], quantity: 0, baseTotal: 0 };
+    const group = grouped.get(category) || {
+      indexes: [],
+      quantity: 0,
+      baseTotal: 0,
+      productNames: [],
+    };
     group.indexes.push(index);
+    if (item.product?.trim() && !group.productNames.includes(item.product.trim())) {
+      group.productNames.push(item.product.trim());
+    }
     group.quantity += Math.max(0, Number(item.quantity) || 0);
     group.baseTotal += (Number(item.price) || 0) * (Number(item.quantity) || 0);
     grouped.set(category, group);
@@ -69,7 +82,10 @@ export async function pricePromotionItems(
     const promotion = await prisma.promotions.findFirst({
       where: {
         active: true,
-        category: { name: category },
+        OR: [
+          { category: { name: category } },
+          { category: { name: { in: group.productNames } } },
+        ],
         AND: [
           { OR: [{ starts_at: null }, { starts_at: { lte: new Date() } }] },
           { OR: [{ ends_at: null }, { ends_at: { gte: new Date() } }] },

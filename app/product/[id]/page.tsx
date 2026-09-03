@@ -564,7 +564,10 @@ export default function ProductDetail() {
                 <p className="text-gray-600 mt-2">{product.category}</p>
 
                 <div className="mt-4">
-                  <PromotionNotice category={product.category} />
+                  <PromotionNotice
+                    category={product.category}
+                    product={product.description}
+                  />
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-2">

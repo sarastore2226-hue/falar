@@ -67,6 +67,7 @@ export default function CartPage() {
   }, [cartItems]);
 
   const subtotal = promotionTotal ?? getCartTotal();
+  const promotionDiscount = Math.max(0, getCartTotal() - subtotal);
   // ✅ إلغاء الشحن والضريبة
   const shipping = 0; // مجاني دائماً
   const tax = 0; // إلغاء الضريبة
@@ -281,11 +282,11 @@ export default function CartPage() {
               </div>
 
               {appliedPromotions.length > 0 && (
-                <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4 text-green-900">
-                  <p className="font-bold">تم تطبيق العرض على طلبك</p>
+                <div className="mb-6 rounded-xl border-2 border-red-300 bg-red-50 p-4 text-red-800">
+                  <p className="text-lg font-extrabold">تم تطبيق العرض على طلبك</p>
                   {appliedPromotions.map((promotion) => (
                     <p key={`${promotion.name}-${promotion.category}`} className="mt-1 text-sm">
-                      {promotion.name}: {promotion.quantity} قطع، وفرت {promotion.savings.toLocaleString()} ج.م
+                      {promotion.name}: {promotion.quantity} قطع، قيمة الخصم {promotion.savings.toLocaleString()} ج.م
                     </p>
                   ))}
                 </div>
@@ -647,6 +648,15 @@ export default function CartPage() {
                     {(subtotal || 0).toLocaleString()} ج.م
                   </span>
                 </div>
+
+                {promotionDiscount > 0 && (
+                  <div className="flex justify-between items-center rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-red-700">
+                    <span className="font-bold">قيمة خصم العرض</span>
+                    <span className="font-extrabold">
+                      -{promotionDiscount.toLocaleString()} ج.م
+                    </span>
+                  </div>
+                )}
 
                 {/* ✅ إزالة سطور الشحن والضريبة */}
 
