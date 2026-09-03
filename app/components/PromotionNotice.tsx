@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getActivePromotions } from "./promotion-cache";
+import Link from "next/link";
 
 type Promotion = Awaited<ReturnType<typeof getActivePromotions>> extends Array<infer Item>
   ? Item
@@ -49,6 +50,33 @@ export default function PromotionNotice({
     return (
       <div className="mb-3 inline-flex items-center rounded-md border border-red-300 bg-red-50 px-3 py-1 text-sm font-bold text-red-700">
         خصومات
+      </div>
+    );
+  }
+
+  if (all) {
+    return (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {promotions.map((promotion) => (
+          <Link
+            key={promotion.id}
+            href={`/categories/${promotion.category?.id || promotion.category_id}`}
+            className="block rounded-xl border-2 border-red-300 bg-red-50 p-5 text-red-800 shadow-sm transition hover:-translate-y-1 hover:border-red-500 hover:shadow-md"
+          >
+            <p className="text-xl font-extrabold">{promotion.name}</p>
+            <p className="mt-2 font-bold">
+              التصنيف: {promotion.category?.name}
+            </p>
+            <div className="mt-3 space-y-1 text-sm font-semibold">
+              {promotion.tiers.map((tier) => (
+                <p key={tier.id}>
+                  {tier.min_quantity} قطع بـ {Number(tier.bundle_price).toLocaleString()} ج.م
+                </p>
+              ))}
+            </div>
+            <p className="mt-4 text-sm font-bold">اضغط للذهاب إلى التصنيف والاستفادة من العرض</p>
+          </Link>
+        ))}
       </div>
     );
   }

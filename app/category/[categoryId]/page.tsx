@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 import Header from "../../components/Header";
 import ProductCard from "../../components/ProductCard";
 import Pagination from "../../components/Pagination";
@@ -38,15 +39,13 @@ interface PaginationInfo {
   hasPrevPage: boolean;
 }
 
-export default function CategoryDetailPage({
-  params,
-}: {
-  params: { categoryId: string };
-}) {
+export default function CategoryDetailPage() {
+  const { categoryId } = useParams<{ categoryId: string }>();
   const [products, setProducts] = useState<Product[]>([]);
   const [category, setCategory] = useState<Category | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isEmployee, setIsEmployee] = useState(false);
 
   const [pagination, setPagination] = useState<PaginationInfo>({
     currentPage: 1,
@@ -68,13 +67,17 @@ export default function CategoryDetailPage({
     }
   };
 
+  useEffect(() => {
+    setIsEmployee(checkUserType());
+  }, []);
+
   // ✅ جلب بيانات التصنيف بالاسم
   const fetchCategoryName = async () => {
     try {
-      console.log(`🔍 جلب اسم التصنيف للـ ID: ${params.categoryId}`);
+      console.log(`🔍 جلب اسم التصنيف للـ ID: ${categoryId}`);
 
       // ✅ محاولة جلب التصنيف من الـ API
-      const response = await fetch(`/api/categories/${params.categoryId}`);
+      const response = await fetch(`/api/categories/${categoryId}`);
       if (response.ok) {
         const categoryData = await response.json();
         console.log(`✅ وجدت التصنيف:`, categoryData);
@@ -87,7 +90,7 @@ export default function CategoryDetailPage({
       if (response2.ok) {
         const categories = await response2.json();
         const foundCategory = categories.find(
-          (cat: Category) => cat.id.toString() === params.categoryId
+          (cat: Category) => cat.id.toString() === categoryId
         );
         if (foundCategory) {
           console.log(`✅ وجدت التصنيف من القائمة:`, foundCategory);
@@ -96,7 +99,7 @@ export default function CategoryDetailPage({
         }
       }
 
-      console.log(`❌ لم أجد التصنيف للـ ID: ${params.categoryId}`);
+      console.log(`❌ لم أجد التصنيف للـ ID: ${categoryId}`);
       return null;
     } catch (error) {
       console.error("Error fetching category:", error);
@@ -162,7 +165,7 @@ export default function CategoryDetailPage({
   // ✅ جلب البيانات أول مرة
   useEffect(() => {
     fetchProducts();
-  }, [params.categoryId]);
+  }, [categoryId]);
 
   // ✅ دالة تغيير الصفحة
   const handlePageChange = (page: number) => {
@@ -177,22 +180,6 @@ export default function CategoryDetailPage({
     console.log(`🔄 تغيير عدد المنتجات في الصفحة إلى: ${newLimit}`);
     fetchProducts(1, newLimit);
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <Header />
-        <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-center items-center h-64">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="mt-4 text-gray-600">جاري تحميل المنتجات...</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   if (error) {
     return (
@@ -223,7 +210,7 @@ export default function CategoryDetailPage({
         {/* رأس الصفحة */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            {category?.name || `التصنيف ${params.categoryId}`}
+            {category?.name || `التصنيف ${categoryId}`}
           </h1>
 
           <div className="flex justify-between items-center mb-4">
@@ -242,12 +229,12 @@ export default function CategoryDetailPage({
             <div className="flex items-center gap-2">
               <span
                 className={`text-sm px-3 py-1 rounded-full ${
-                  checkUserType()
+                  isEmployee
                     ? "bg-blue-100 text-blue-800"
                     : "bg-green-100 text-green-800"
                 }`}
               >
-                {checkUserType() ? "👔 موظف" : "👤 عميل"}
+                {isEmployee ? "👔 موظف" : "👤 عميل"}
               </span>
             </div>
           </div>
@@ -259,7 +246,7 @@ export default function CategoryDetailPage({
               <div>
                 <p className="text-blue-800 text-sm">
                   <strong>معلومات:</strong> يتم عرض المنتجات الخاصة بتصنيف "
-                  {category?.name || params.categoryId}"
+                  {category?.name || categoryId}"
                   {pagination.totalPages > 1 &&
                     ` على ${pagination.totalPages} صفحات`}
                 </p>
@@ -273,7 +260,7 @@ export default function CategoryDetailPage({
         </div>
 
         {/* عرض المنتجات */}
-        {products.length > 0 ? (
+        {!loading && products.length > 0 ? (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {products.map((product) => (
@@ -302,7 +289,7 @@ export default function CategoryDetailPage({
                     عرض {pagination.totalProducts} منتج في صفحة واحدة
                   </p>
                   <p className="text-sm text-gray-500 mt-2">
-                    التصنيف: {category?.name || params.categoryId}
+                    التصنيف: {category?.name || categoryId}
                   </p>
                 </div>
               )}
@@ -361,14 +348,14 @@ export default function CategoryDetailPage({
             <button
               onClick={() => {
                 console.log("📋 معلومات كاملة:", {
-                  params,
+                  categoryId,
                   category,
                   productsCount: products.length,
                   pagination,
                 });
                 alert(
                   `معلومات الصفحة:\nالتصنيف: ${
-                    category?.name || params.categoryId
+                    category?.name || categoryId
                   }\nالصفحة: ${pagination.currentPage}/${
                     pagination.totalPages
                   }\nالمنتجات: ${products.length}/${pagination.totalProducts}`
@@ -383,8 +370,8 @@ export default function CategoryDetailPage({
           {/* معلومات تقنية للتصحيح */}
           <div className="mt-4 text-xs text-gray-400">
             <p>
-              URL: /category/{params.categoryId} | Category ID:{" "}
-              {params.categoryId} | Category Name:{" "}
+              URL: /category/{categoryId} | Category ID:{" "}
+              {categoryId} | Category Name:{" "}
               {category?.name || "غير معروف"}
             </p>
             <p>

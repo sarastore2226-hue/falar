@@ -1,10 +1,11 @@
 type Promotion = {
   id: number;
   name: string;
+  category_id: number;
   active: boolean;
   starts_at?: string | null;
   ends_at?: string | null;
-  category?: { name: string };
+  category?: { id: number; name: string };
   tiers: Array<{ id: number; min_quantity: number; bundle_price: number }>;
 };
 
