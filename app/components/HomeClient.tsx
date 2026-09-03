@@ -5,6 +5,7 @@ import Header from "./Header";
 import ProductCard from "./ProductCard";
 import Footer from "./Footer";
 import Link from "next/link";
+import PromotionNotice from "./PromotionNotice";
 
 export default function HomeClient({ initialProducts, initialCategories }: any) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -108,6 +109,10 @@ export default function HomeClient({ initialProducts, initialCategories }: any) 
                 👨‍💼 وضع الموظف
               </div>
             )}
+          </div>
+
+          <div className="mb-8">
+            <PromotionNotice all />
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">

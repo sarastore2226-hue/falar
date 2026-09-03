@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Header from "@/app/components/Header";
 import ProductCard from "@/app/components/ProductCard";
+import PromotionNotice from "@/app/components/PromotionNotice";
 import { useCart } from "../../../context/CartContext";
 
 interface Product {
@@ -561,6 +562,10 @@ export default function ProductDetail() {
                   {product.description}
                 </h1>
                 <p className="text-gray-600 mt-2">{product.category}</p>
+
+                <div className="mt-4">
+                  <PromotionNotice category={product.category} />
+                </div>
 
                 <div className="mt-3 flex flex-wrap gap-2">
                   <span className="text-sm bg-gray-100 text-gray-600 px-2 py-1 rounded-md font-mono">
