@@ -9,6 +9,7 @@ interface Category {
   name: string;
   kind?: string;
   image?: string;
+  sub?: string | null;
 }
 
 export default function CategoriesPage() {
@@ -29,7 +30,8 @@ export default function CategoriesPage() {
           (category: Category) =>
             category.name !== "خلفية" &&
             category.name &&
-            category.name.trim() !== ""
+            category.name.trim() !== "" &&
+            !category.sub
         );
 
         setCategories(displayCategories);
