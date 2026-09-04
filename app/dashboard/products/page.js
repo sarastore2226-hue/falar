@@ -23,6 +23,7 @@ export default function ProductsManagement() {
   // حالات التحديد والترقيم
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+  const [editingVariants, setEditingVariants] = useState([]);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(50);
   const [hasMore, setHasMore] = useState(true);
@@ -169,6 +170,12 @@ export default function ProductsManagement() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      if (editingProduct && editingVariants.some((variant) =>
+        !variant.color.trim() || !variant.size.trim() || Number(variant.out_price) < 0 || Number(variant.cur_qty) < 0
+      )) {
+        alert("يرجى مراجعة اللون والمقاس والسعر والكمية قبل الحفظ");
+        return;
+      }
       const url = editingProduct
         ? `/api/products/${editingProduct.modelId}`
         : "/api/products";
@@ -178,6 +185,14 @@ export default function ProductsManagement() {
         ...productData,
         out_price: parseFloat(productData.out_price) || 0,
         cur_qty: parseInt(productData.cur_qty) || 0,
+        variants: editingVariants.map((variant) => ({
+          uniqueId: variant.uniqueId,
+          itemCode: variant.itemCode,
+          color: variant.color.trim(),
+          size: variant.size.trim(),
+          out_price: parseFloat(variant.out_price),
+          cur_qty: parseInt(variant.cur_qty, 10),
+        })),
       };
 
       const response = await fetch(url, {
@@ -190,6 +205,7 @@ export default function ProductsManagement() {
       if (result.success) {
         setShowAddForm(false);
         setEditingProduct(null);
+        setEditingVariants([]);
         setProductData({
           item_name: "",
           master_code: "",
@@ -231,6 +247,41 @@ export default function ProductsManagement() {
     } catch (error) {
       console.error("Error deleting product:", error);
       alert("حدث خطأ أثناء الحذف");
+    }
+  };
+
+  const handleEdit = async (product) => {
+    try {
+      const response = await fetch(`/api/products/${product.modelId}?employee=true`);
+      const result = await response.json();
+      const detailedProduct = result.product || product;
+      const variants = (detailedProduct.variants || []).flatMap((variant) =>
+        (variant.sizeDetails || []).map((detail) => ({
+          ...detail,
+          color: variant.color || "",
+          out_price: String(detail.price),
+          cur_qty: String(detail.quantity),
+        }))
+      );
+
+      setEditingProduct(detailedProduct);
+      setEditingVariants(variants);
+      setProductData({
+        item_name: detailedProduct.description || detailedProduct.item_name || "",
+        master_code: detailedProduct.master_code || "",
+        item_code: "",
+        color: "",
+        size: "",
+        out_price: detailedProduct.price?.toString() || "0",
+        images: detailedProduct.variants?.[0]?.imageUrl || "",
+        cur_qty: detailedProduct.cur_qty?.toString() || "0",
+        group_name: detailedProduct.group_name || detailedProduct.category || "",
+        kind_name: detailedProduct.kind_name || "",
+      });
+      setShowAddForm(true);
+    } catch (error) {
+      console.error("Error loading product details:", error);
+      alert("تعذر تحميل تفاصيل المنتج للتعديل");
     }
   };
 
@@ -518,25 +569,7 @@ export default function ProductsManagement() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex gap-2">
                           <button
-                            onClick={() => {
-                              setEditingProduct(product);
-                              setProductData({
-                                item_name:
-                                  product.description ||
-                                  product.item_name ||
-                                  "",
-                                master_code: product.master_code || "",
-                                item_code: product.item_code || "",
-                                color: product.variants?.[0]?.color || "",
-                                size: product.variants?.[0]?.sizes?.[0] || "",
-                                out_price: product.price?.toString() || "0",
-                                images: product.variants?.[0]?.imageUrl || "",
-                                cur_qty: product.cur_qty?.toString() || "0",
-                                group_name: product.group_name || "",
-                                kind_name: product.kind_name || "",
-                              });
-                              setShowAddForm(true);
-                            }}
+                            onClick={() => handleEdit(product)}
                             className="text-blue-600 hover:text-blue-900"
                           >
                             تعديل
@@ -599,6 +632,7 @@ export default function ProductsManagement() {
                     onClick={() => {
                       setShowAddForm(false);
                       setEditingProduct(null);
+                      setEditingVariants([]);
                     }}
                     className="text-gray-400 hover:text-gray-600"
                   >
@@ -772,6 +806,28 @@ export default function ProductsManagement() {
                       />
                     </div>
                   </div>
+                  {editingProduct && editingVariants.length > 0 && (
+                    <div className="border-t border-gray-200 pt-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <h4 className="font-bold text-gray-900">نسخ الموديل</h4>
+                          <p className="text-xs text-gray-500">عدّل اللون أو المقاس أو السعر أو الكمية لكل نسخة بدقة</p>
+                        </div>
+                        <span className="text-sm text-gray-500">{editingVariants.length} نسخة</span>
+                      </div>
+                      <div className="space-y-3">
+                        {editingVariants.map((variant, index) => (
+                          <div key={variant.uniqueId || index} className="grid grid-cols-2 md:grid-cols-5 gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
+                            <input value={variant.color} onChange={(e) => setEditingVariants((items) => items.map((item, i) => i === index ? { ...item, color: e.target.value } : item))} className="rounded-lg border border-gray-300 px-2 py-2 text-sm" placeholder="اللون" required />
+                            <input value={variant.size} onChange={(e) => setEditingVariants((items) => items.map((item, i) => i === index ? { ...item, size: e.target.value } : item))} className="rounded-lg border border-gray-300 px-2 py-2 text-sm" placeholder="المقاس" required />
+                            <input type="number" min="0" step="0.01" value={variant.out_price} onChange={(e) => setEditingVariants((items) => items.map((item, i) => i === index ? { ...item, out_price: e.target.value } : item))} className="rounded-lg border border-gray-300 px-2 py-2 text-sm" placeholder="السعر" required />
+                            <input type="number" min="0" step="1" value={variant.cur_qty} onChange={(e) => setEditingVariants((items) => items.map((item, i) => i === index ? { ...item, cur_qty: e.target.value } : item))} className="rounded-lg border border-gray-300 px-2 py-2 text-sm" placeholder="الكمية" required />
+                            <span className="flex items-center truncate px-2 text-xs text-gray-500" title={variant.itemCode}>{variant.itemCode || "بدون كود"}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="flex gap-4 justify-end pt-6 border-t border-gray-200">
                     <button
                       type="button"

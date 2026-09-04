@@ -47,6 +47,8 @@ export default function ProductDetail() {
   const [loading, setLoading] = useState(true);
   const [currentItemCode, setCurrentItemCode] = useState<string>("");
   const [whatsappNumber, setWhatsappNumber] = useState<string>("");
+  const [isImageZoomOpen, setIsImageZoomOpen] = useState(false);
+  const [zoomPosition, setZoomPosition] = useState({ x: 50, y: 50 });
 
   const isEmployee = () => {
     try {
@@ -443,6 +445,14 @@ export default function ProductDetail() {
   const mainImage = getDisplayImage();
   const masterCode = product.master_code || product.modelId;
 
+  const handleImageMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    setZoomPosition({
+      x: ((event.clientX - bounds.left) / bounds.width) * 100,
+      y: ((event.clientY - bounds.top) / bounds.height) * 100,
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
@@ -485,16 +495,33 @@ export default function ProductDetail() {
         <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-12">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-8">
             <div>
-              <div className="aspect-[3/4] overflow-hidden rounded-lg bg-white border border-gray-200 shadow-sm">
+              <div
+                className="group relative aspect-[3/4] cursor-zoom-in overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm"
+                onMouseMove={handleImageMove}
+                onMouseLeave={() => setZoomPosition({ x: 50, y: 50 })}
+                onClick={() => setIsImageZoomOpen(true)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    setIsImageZoomOpen(true);
+                  }
+                }}
+                aria-label="تكبير صورة المنتج"
+              >
                 <img
                   src={mainImage}
                   alt={product.description}
-                  className="w-full h-full object-contain p-4 transition-transform duration-300 hover:scale-105"
+                  className="h-full w-full object-contain p-4 transition-transform duration-200 ease-out group-hover:scale-[1.8]"
+                  style={{ transformOrigin: `${zoomPosition.x}% ${zoomPosition.y}%` }}
                   onError={(e) => {
                     e.currentTarget.src =
                       "https://via.placeholder.com/600x800/EFEFEF/666666?text=No+Image";
                   }}
                 />
+                <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/65 px-4 py-2 text-xs font-semibold text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                  مرر للتكبير · اضغط للعرض الكامل
+                </div>
               </div>
 
               {product.variants && product.variants.length > 1 && (
@@ -555,6 +582,31 @@ export default function ProductDetail() {
                 </div>
               )}
             </div>
+
+            {isImageZoomOpen && (
+              <div
+                className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+                role="dialog"
+                aria-modal="true"
+                aria-label="صورة المنتج بالحجم الكامل"
+                onClick={() => setIsImageZoomOpen(false)}
+              >
+                <button
+                  type="button"
+                  onClick={() => setIsImageZoomOpen(false)}
+                  className="absolute right-4 top-4 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/90 text-2xl text-gray-800 shadow-lg transition hover:bg-white"
+                  aria-label="إغلاق الصورة"
+                >
+                  ×
+                </button>
+                <img
+                  src={mainImage}
+                  alt={product.description}
+                  className="max-h-[92vh] max-w-[94vw] rounded-lg object-contain shadow-2xl"
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </div>
+            )}
 
             <div className="space-y-6">
               <div>

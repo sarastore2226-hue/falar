@@ -115,6 +115,7 @@ export async function GET(
           sizeItemCodes: {},
           cur_qty: 0, // إجمالي كمية هذا اللون
           stor_id: row.stor_id,
+          sizeDetails: [],
         };
       }
 
@@ -130,6 +131,13 @@ export async function GET(
           variant.sizeItemCodes[size] = row.item_code;
         }
         variant.sizePrices[size] = Number(row.out_price) || 0;
+        variant.sizeDetails.push({
+          uniqueId: row.unique_id,
+          itemCode: row.item_code || "",
+          size,
+          price: Number(row.out_price) || 0,
+          quantity: curQty,
+        });
       }
     });
 
@@ -211,6 +219,30 @@ export async function PUT(
           images: body.images || targetVariant.images,
         },
       });
+    }
+
+    if (Array.isArray(body.variants)) {
+      for (const variant of body.variants) {
+        if (!variant.uniqueId) continue;
+        if (!variant.color?.trim() || !variant.size?.trim()) {
+          throw new Error("اللون والمقاس مطلوبان لكل نسخة");
+        }
+        const price = Number(variant.out_price);
+        const quantity = Number(variant.cur_qty);
+        if (!Number.isFinite(price) || price < 0 || !Number.isInteger(quantity) || quantity < 0) {
+          throw new Error("السعر والكمية غير صحيحين");
+        }
+        await prisma.products.update({
+          where: { unique_id: String(variant.uniqueId) },
+          data: {
+            item_code: variant.itemCode || undefined,
+            color: variant.color.trim(),
+            size: variant.size.trim(),
+            out_price: price,
+            cur_qty: quantity,
+          },
+        });
+      }
     }
 
     return NextResponse.json({

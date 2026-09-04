@@ -62,7 +62,12 @@ export default function CompanyManagement() {
       const response = await fetch("/api/company");
       const data = await response.json();
       setCompanyInfo(data);
-      setCompanyData(data);
+      setCompanyData((currentData) => ({
+        ...currentData,
+        ...Object.fromEntries(
+          Object.entries(data).map(([key, value]) => [key, value ?? ""])
+        ),
+      }));
     } catch (error) {
       console.error("Error fetching company info:", error);
     }

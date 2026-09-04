@@ -33,7 +33,7 @@ export async function GET(request: Request) {
         { master_code: { contains: search, mode: "insensitive" } },
       ];
       if (!isNaN(Number(search))) {
-        searchOR.push({ unique_id: { equals: Number(search) } });
+        searchOR.push({ unique_id: { equals: String(search) } });
       }
       andConditions.push({ OR: searchOR });
     }
@@ -50,6 +50,7 @@ export async function GET(request: Request) {
         OR: [
           { group_name: { contains: categoryName, mode: "insensitive" } },
           { kind_name: { contains: categoryName, mode: "insensitive" } },
+          { item_name: { contains: categoryName, mode: "insensitive" } },
         ],
       });
     }
