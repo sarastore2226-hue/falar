@@ -39,23 +39,12 @@ export default function ProductDetail() {
   const productId = params.id as string;
   const { addToCart } = useCart();
 
-  const [product, setProduct] = useState<Product | null>(() => {
-    if (typeof window === "undefined") return null;
-
-    try {
-      const cachedProduct = sessionStorage.getItem(
-        `product-preview:${productId}`
-      );
-      return cachedProduct ? JSON.parse(cachedProduct) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [product, setProduct] = useState<Product | null>(null);
   const [selectedColor, setSelectedColor] = useState<string>("");
   const [selectedSize, setSelectedSize] = useState<string>("");
   const [quantity, setQuantity] = useState(1);
   const [similarProducts, setSimilarProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(() => !product);
+  const [loading, setLoading] = useState(true);
   const [currentItemCode, setCurrentItemCode] = useState<string>("");
   const [whatsappNumber, setWhatsappNumber] = useState<string>("");
   const [isImageZoomOpen, setIsImageZoomOpen] = useState(false);
@@ -131,44 +120,25 @@ export default function ProductDetail() {
 
   const fetchProductDetails = async () => {
     try {
-      if (!product) setLoading(true);
+      setLoading(true);
 
       let foundProduct: Product | undefined;
       let allProductsList: Product[] = [];
 
-      // جلب تفاصيل المنتج مباشرة حتى لا ننتظر القائمة الكاملة قبل العرض
+      // الخطوة 1: محاولة الجلب من القائمة العامة (للمنتجات الأولى)
       try {
-        const directUrl = employee
-          ? `/api/products/${productId}?employee=true`
-          : `/api/products/${productId}`;
-        const directRes = await fetch(directUrl);
-        if (directRes.ok) {
-          const directData = await directRes.json();
-          const directProduct = directData.product || directData;
-          if (directProduct && isProductMatch(directProduct, productId)) {
-            foundProduct = directProduct;
-          }
-        }
-      } catch (err) {
-        console.warn("Direct product fetch failed, using fallback", err);
-      }
+        const endpoint = employee
+          ? "/api/getAllData?employee=true"
+          : "/api/getAllData";
+        const response = await fetch(endpoint);
 
-      // الخطوة 1: محاولة الجلب من القائمة العامة كخطة بديلة وللمنتجات المشابهة
-      try {
-        if (!foundProduct) {
-          const endpoint = employee
-            ? "/api/getAllData?employee=true"
-            : "/api/getAllData";
-          const response = await fetch(endpoint);
-
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success && data.products) {
-              allProductsList = data.products;
-              foundProduct = allProductsList.find((p: any) =>
-                isProductMatch(p, productId)
-              );
-            }
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.products) {
+            allProductsList = data.products;
+            foundProduct = allProductsList.find((p: any) =>
+              isProductMatch(p, productId)
+            );
           }
         }
       } catch (err) {
@@ -234,7 +204,6 @@ export default function ProductDetail() {
         );
 
         setProduct(foundProduct);
-        setLoading(false);
 
         let similar = [];
         if (allProductsList.length > 0 && foundProduct.category) {

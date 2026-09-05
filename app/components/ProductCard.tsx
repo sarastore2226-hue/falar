@@ -220,12 +220,6 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
     <Link
       href={`/product/${product.modelId}`}
       className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 overflow-hidden group h-full flex flex-col block"
-      onClick={() => {
-        sessionStorage.setItem(
-          `product-preview:${product.modelId}`,
-          JSON.stringify(product)
-        );
-      }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >

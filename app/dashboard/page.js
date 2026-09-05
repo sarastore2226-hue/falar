@@ -262,7 +262,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
           
           {/* ✅ بطاقة عدد الزوار الجديدة */}
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200 hover:shadow-md transition-shadow">
+          <Link href="/dashboard/visitors" className="bg-white rounded-xl shadow-sm p-6 border border-gray-200 hover:shadow-md transition-shadow block">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">إجمالي الزوار</p>
@@ -275,7 +275,7 @@ export default function Dashboard() {
                 <span className="text-2xl">👀</span>
               </div>
             </div>
-          </div>
+          </Link>
 
           <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">

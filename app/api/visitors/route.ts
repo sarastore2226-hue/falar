@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma"; // تأكد من مسار prisma لديك
 
 // GET: لجلب إجمالي عدد الزوار (للموظف)
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const details = new URL(request.url).searchParams.get("details") === "true";
     // تجميع عدد الزوار من كل الأيام
     const totalVisitors = await prisma.visitor_stats.aggregate({
       _sum: {
@@ -11,9 +12,19 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json({ 
-      total: totalVisitors._sum.count || 0 
-    });
+    if (details) {
+      const dailyVisitors = await prisma.visitor_stats.findMany({
+        orderBy: { date: "desc" },
+        select: { date: true, count: true },
+      });
+
+      return NextResponse.json({
+        total: totalVisitors._sum.count || 0,
+        daily: dailyVisitors,
+      });
+    }
+
+    return NextResponse.json({ total: totalVisitors._sum.count || 0 });
   } catch (error) {
     return NextResponse.json({ error: "فشل في جلب البيانات" }, { status: 500 });
   }
