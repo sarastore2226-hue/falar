@@ -44,7 +44,7 @@ export default function ProductDetail() {
   const [selectedSize, setSelectedSize] = useState<string>("");
   const [quantity, setQuantity] = useState(1);
   const [similarProducts, setSimilarProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !product);
   const [currentItemCode, setCurrentItemCode] = useState<string>("");
   const [whatsappNumber, setWhatsappNumber] = useState<string>("");
   const [isImageZoomOpen, setIsImageZoomOpen] = useState(false);
@@ -120,8 +120,6 @@ export default function ProductDetail() {
 
   const fetchProductDetails = async () => {
     try {
-      setLoading(true);
-
       let foundProduct: Product | undefined;
       let allProductsList: Product[] = [];
 
@@ -280,6 +278,18 @@ export default function ProductDetail() {
 
   useEffect(() => {
     if (productId) {
+      try {
+        const cachedProduct = sessionStorage.getItem(
+          `product-preview:${productId}`
+        );
+        if (cachedProduct) {
+          setProduct(JSON.parse(cachedProduct));
+          setLoading(false);
+        }
+      } catch {
+        sessionStorage.removeItem(`product-preview:${productId}`);
+      }
+
       fetchProductDetails();
     }
   }, [productId]);
