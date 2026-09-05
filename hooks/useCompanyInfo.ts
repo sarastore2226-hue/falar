@@ -45,21 +45,7 @@ export function useCompanyInfo() {
         setError(errorMessage);
         console.error("Error fetching company info:", err);
 
-        // ⬅️ استخدام بيانات افتراضية في حالة الخطأ
-        setCompanyInfo({
-          id: 1,
-          company_name: "أحلام",
-          address: null,
-          logo: null,
-          email: null,
-          facebook_url: null,
-          instagram_url: null,
-          tiktok_url: null,
-          phone1: null,
-          phone2: null,
-          phone3: null,
-          terms_conditions: null,
-        });
+        setCompanyInfo(null);
       } finally {
         setLoading(false);
       }

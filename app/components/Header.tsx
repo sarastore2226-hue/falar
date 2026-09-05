@@ -11,7 +11,7 @@ import OrderNotifications from "./OrderNotifications";
 export default function Header() {
   const { getCartItemsCount, cartItems, getCartTotal } = useCart();
   const { categories, setSearchTerm, searchTerm } = useProducts();
-  const { companyInfo } = useCompanyInfo();
+  const { companyInfo, loading: companyInfoLoading } = useCompanyInfo();
   const { user, isEmployee, isCustomer, logout } = useAuth();
   const cartCount = getCartItemsCount();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -110,20 +110,20 @@ export default function Header() {
             className="flex items-center space-x-2 space-x-reverse"
             onClick={closeMenus}
           >
-            {companyInfo?.logo ? (
+            {companyInfoLoading ? (
+              <div className="w-10 h-10" aria-hidden="true" />
+            ) : companyInfo?.logo ? (
               <img
                 src={companyInfo.logo}
                 alt={companyInfo.company_name}
                 className="w-10 h-10 rounded-full object-cover"
               />
-            ) : (
-              <div className="w-10 h-10 bg-pink-500 rounded-full flex items-center justify-center">
-                <span className="text-white font-bold text-lg">أ</span>
-              </div>
-            )}
-            <span className="text-xl font-bold text-gray-900">
-              {companyInfo?.company_name || "أحلام"}
-            </span>
+            ) : null}
+            {!companyInfoLoading && companyInfo?.company_name ? (
+              <span className="text-xl font-bold text-gray-900">
+                {companyInfo.company_name}
+              </span>
+            ) : null}
           </Link>
 
           {/* رابط دخول العملاء والموظفين أو معلومات المستخدم */}
