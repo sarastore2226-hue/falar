@@ -1,57 +1,102 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
+import { useDisplay } from "@/context/DisplayContext";
+import { useLanguage } from "@/context/LanguageContext";
+import { useProducts } from "@/context/ProductsContext";
 import Header from "./Header";
 import ProductCard from "./ProductCard";
 import Footer from "./Footer";
 import Link from "next/link";
 import PromotionNotice from "./PromotionNotice";
 
-export default function HomeClient({ initialProducts, initialCategories }: any) {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [displayProducts, setDisplayProducts] = useState(initialProducts.slice(0, 12));
+// استخراج نوع المنتج من ProductCard تلقائياً لضمان التطابق 100% وبدون أي any
+type Product = React.ComponentProps<typeof ProductCard>["product"] & {
+  modelId?: string | number;
+  description?: string;
+  category?: string;
+};
 
-  // ✅ تفعيل الوضع العشوائي عند التحميل فقط (لتحسين تجربة المستخدم)
+interface Category {
+  id: string | number;
+  name: string;
+  kind?: string;
+  sub?: string | boolean | null;
+  image?: string;
+}
+
+interface HomeClientProps {
+  initialProducts: Product[];
+  initialCategories: Category[];
+}
+
+export default function HomeClient({ initialProducts = [], initialCategories = [] }: HomeClientProps) {
+  const { settings } = useDisplay();
+  const { isArabic, t } = useLanguage();
+  const { searchTerm } = useProducts(); // ✅ جلب البحث مباشرة من context المتجر لربط الهيدر بالرئيسية
+  const [displayProducts, setDisplayProducts] = useState<Product[]>(() => initialProducts.slice(0, 12));
+
+  // ✅ تفعيل الوضع العشوائي عند التحميل الأول
   useEffect(() => {
     if (initialProducts.length > 0) {
-      // خلط المنتجات عشوائياً بعد التحميل الأول
       const shuffled = [...initialProducts].sort(() => 0.5 - Math.random());
       setDisplayProducts(shuffled.slice(0, 12));
     }
-  }, []); // تعمل مرة واحدة
+  }, [initialProducts]);
 
-  // ✅ الفلترة عند البحث
+  // ✅ الفلترة التلقائية عند البحث من شريط الهيدر
   useEffect(() => {
     if (searchTerm) {
-      const filtered = initialProducts.filter((p: any) =>
-        p.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.category.toLowerCase().includes(searchTerm.toLowerCase())
+      const term = searchTerm.toLowerCase();
+      const filtered = initialProducts.filter((p: Product) =>
+        (p.description && p.description.toLowerCase().includes(term)) ||
+        (p.category && p.category.toLowerCase().includes(term))
       );
       setDisplayProducts(filtered);
+    } else {
+      setDisplayProducts(initialProducts.slice(0, 12));
     }
   }, [searchTerm, initialProducts]);
 
   // ✅ تجهيز التصنيفات وصورة الهيرو
   const displayCategories = useMemo(() => {
     return initialCategories
-      .filter((cat: any) => cat.kind === "جنس" && !cat.sub && cat.name !== "خلفية" && cat.image)
+      .filter((cat: Category) => cat.kind === "جنس" && !cat.sub && cat.name !== "خلفية" && cat.image)
       .slice(0, 8);
   }, [initialCategories]);
 
   const heroImage = useMemo(() => {
-    return initialCategories.find((cat: any) => cat.name === "خلفية")?.image || "";
+    return initialCategories.find((cat: Category) => cat.name === "خلفية")?.image || "";
   }, [initialCategories]);
 
-  // ✅ التحقق من الموظف (لإظهار الأزرار الخاصة)
+  // ✅ التحقق من الموظف
   const [isEmployee, setIsEmployee] = useState(false);
   useEffect(() => {
     setIsEmployee(!!localStorage.getItem("employee"));
   }, []);
 
+  // دالة ذكية لترجمة أسماء التصنيفات الأساسية
+  const formatCategoryName = (name: string) => {
+    if (isArabic) return name;
+    const categoryTranslations: Record<string, string> = {
+      "أولاد": "Boys",
+      "ولادي": "Boys",
+      "بنات": "Girls",
+      "بناتي": "Girls",
+      "أطفال": "Kids",
+      "بيبي": "Baby",
+      "مواليد": "Newborn",
+      "شتوي": "Winter",
+      "صيفي": "Summer",
+      "محير": "Teens",
+      "حديثي الولادة": "Newborn",
+    };
+    return categoryTranslations[name] || name;
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* نمرر دالة البحث للهيدر */}
-      <Header onSearch={setSearchTerm} />
+      <Header />
 
       {/* Hero Section */}
       <section
@@ -68,22 +113,33 @@ export default function HomeClient({ initialProducts, initialCategories }: any) 
       {displayCategories.length > 0 && (
         <section className="py-16 bg-[#fdf6f8]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="text-3xl md:text-4xl font-extrabold text-gray-900 text-center mb-12">
-              التصنيف حسب النوع
+            <h2 
+              className="text-3xl md:text-4xl font-extrabold text-center mb-12" 
+              style={{ color: settings.fontColor }}
+            >
+              {t("home.categorizeBy")}
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8 justify-items-center">
-              {displayCategories.map((cat: any, index: number) => (
+              {displayCategories.map((cat: Category, index: number) => (
                 <Link key={cat.id} href={`/categories/${cat.id}`} className="group text-center block">
                   <div
                     className="bg-white rounded-[60px_20px_60px_20px] p-4 shadow-lg w-40 h-48 md:w-64 md:h-72 flex flex-col justify-end items-center overflow-hidden transition-all duration-300 group-hover:shadow-xl group-hover:scale-105 relative"
                     style={{ transform: `rotate(${index % 2 === 0 ? "-5deg" : "-5deg"})` }}
                   >
                     <div className="absolute inset-0 w-full h-full flex justify-center items-center">
-                      <img src={cat.image} alt={cat.name} className="w-full h-full object-cover rounded-2xl" loading="lazy" />
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img 
+                        src={cat.image} 
+                        alt={cat.name} 
+                        className="w-full h-full object-cover rounded-2xl" 
+                        loading="lazy" 
+                      />
                     </div>
                     <div className="relative z-10 w-full pt-32 md:pt-48">
                       <div className="bg-white/90 backdrop-blur-sm rounded-full mx-4 py-3 px-4 border border-white/50">
-                        <p className="text-gray-800 text-lg font-bold">{cat.name}</p>
+                        <p className="text-gray-800 text-lg font-bold">
+                          {formatCategoryName(cat.name)}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -99,14 +155,18 @@ export default function HomeClient({ initialProducts, initialCategories }: any) 
         <section className="w-full">
           <div className="flex justify-between items-center mb-8">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">أحدث الموديلات</h1>
+              <h1 className="text-2xl font-bold" style={{ color: settings.fontColor }}>
+                {t("home.latest")}
+              </h1>
               <p className="text-gray-600 mt-1">
-                {searchTerm ? `نتائج البحث: ${displayProducts.length}` : `عرض ${displayProducts.length} من أحدث المنتجات`}
+                {searchTerm
+                  ? (isArabic ? `نتائج البحث: ${displayProducts.length}` : `Search results: ${displayProducts.length}`)
+                  : (isArabic ? `عرض ${displayProducts.length} من أحدث المنتجات` : `Showing ${displayProducts.length} latest products`)}
               </p>
             </div>
             {isEmployee && (
               <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
-                👨‍💼 وضع الموظف
+                👨‍💼 {isArabic ? "وضع الموظف" : "Employee Mode"}
               </div>
             )}
           </div>
@@ -116,9 +176,9 @@ export default function HomeClient({ initialProducts, initialCategories }: any) 
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-            {displayProducts.map((product: any, index: number) => (
+            {displayProducts.map((product: Product, index: number) => (
               <ProductCard
-                key={product.modelId}
+                key={product.modelId ?? index}
                 product={product}
                 priority={index < 4}
               />
@@ -126,7 +186,9 @@ export default function HomeClient({ initialProducts, initialCategories }: any) 
           </div>
           
           {displayProducts.length === 0 && (
-            <div className="text-center py-12 text-gray-500">لا توجد منتجات للعرض</div>
+            <div className="text-center py-12 text-gray-500">
+              {t("home.noProducts")}
+            </div>
           )}
         </section>
       </main>

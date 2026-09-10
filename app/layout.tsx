@@ -4,6 +4,8 @@ import "./globals.css";
 import { CartProvider } from "../context/CartContext";
 import { ProductsProvider } from "./../context/ProductsContext";
 import { AuthProvider } from "./../context/AuthContext";
+import { DisplayProvider } from "./../context/DisplayContext";
+import { LanguageProvider } from "./../context/LanguageContext";
 // 1. استيراد المكون الجديد
 import VisitorTracker from "./components/VisitorTracker";
 
@@ -83,15 +85,19 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50`}
         suppressHydrationWarning={true}
       >
-        <AuthProvider>
-          <ProductsProvider>
-            <CartProvider>
-              {/* 2. إضافة المكون هنا ليقوم بعد الزوار */}
-              <VisitorTracker />
-              {children}
-            </CartProvider>
-          </ProductsProvider>
-        </AuthProvider>
+        <LanguageProvider>
+          <AuthProvider>
+            <DisplayProvider>
+              <ProductsProvider>
+                <CartProvider>
+                  {/* 2. إضافة المكون هنا ليقوم بعد الزوار */}
+                  <VisitorTracker />
+                  {children}
+                </CartProvider>
+              </ProductsProvider>
+            </DisplayProvider>
+          </AuthProvider>
+        </LanguageProvider>
 
         <script
           type="application/ld+json"

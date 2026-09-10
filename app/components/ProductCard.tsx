@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { useDisplay } from "../../context/DisplayContext";
+import { useLanguage } from "../../context/LanguageContext";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import PromotionNotice from "./PromotionNotice";
@@ -36,8 +38,8 @@ interface ProductCardProps {
   priority?: boolean;
 }
 
-// ✅ سنخزن كميات الموظف في متغير خارجي
-let employeeQuantitiesCache: Map<string, number> = new Map();
+// سنخزن كميات الموظف في متغير خارجي
+const employeeQuantitiesCache: Map<string, number> = new Map();
 
 export default function ProductCard({ product, priority = false }: ProductCardProps) {
   const router = useRouter();
@@ -45,23 +47,23 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
   const [isHovered, setIsHovered] = useState(false);
 
   const { isEmployee } = useAuth();
+  const { settings } = useDisplay();
+  const { t, isArabic } = useLanguage(); // ✅ ربط نظام اللغات
 
-  // ✅ الحالة الافتراضية للكمية يجب أن تكون null ليتم حسابها لاحقاً
+  // الحالة الافتراضية للكمية
   const [currentQuantity, setCurrentQuantity] = useState<number | null>(null);
 
-  // 🔥 1. حساب إجمالي المخزون من جميع الألوان المتاحة في البيانات
-  // هذا يضمن أن الكارت يظهر "متوفر" إذا كان أي لون يحتوي على كمية
+  // حساب إجمالي المخزون من جميع الألوان المتاحة
   const totalStock = product.variants.reduce(
     (acc, variant) => acc + (variant.cur_qty || 0),
     0
   );
 
-  // ✅ جلب كميات الموظف عند تحميل المكون
+  // جلب كميات الموظف عند تحميل المكون
   useEffect(() => {
     const fetchEmployeeQuantities = async () => {
       if (!isEmployee) return;
 
-      // إذا كنا قد حددنا كمية يدوياً (بالضغط على لون)، لا تقم بالجلب
       if (currentQuantity !== null) return;
 
       try {
@@ -71,7 +73,6 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
           return;
         }
 
-        // ✅ استخدام API المنتجات لجلب أحدث البيانات
         const response = await fetch(
           `/api/products?employee=true&search=${
             product.master_code || product.modelId
@@ -87,18 +88,13 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
           );
 
           if (employeeProduct) {
-            // نستخدم الكمية القادمة من السيرفر، أو نستخدم المجموع المحسوب
             const quantity = employeeProduct.cur_qty || 0;
-
-            // 🔥 تعديل: إذا كانت كمية السيرفر 0 ولكن لدينا مجموع محلي > 0، نستخدم المجموع المحلي
-            // هذا يحل مشكلة ظهور "غير متوفر" بينما توجد ألوان
             const finalQty =
               quantity === 0 && totalStock > 0 ? totalStock : quantity;
 
             setCurrentQuantity(finalQty);
             employeeQuantitiesCache.set(cacheKey, finalQty);
           } else {
-            // إذا لم يجد المنتج ولكن لدينا مخزون في الألوان، نعرض مخزون الألوان
             const fallbackQty = totalStock > 0 ? totalStock : 0;
             setCurrentQuantity(fallbackQty);
             employeeQuantitiesCache.set(cacheKey, fallbackQty);
@@ -106,7 +102,6 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
         }
       } catch (error) {
         console.warn("⚠️ لا يمكن جلب كميات الموظف:", error);
-        // عند الخطأ، استخدم المجموع المحسوب
         setCurrentQuantity(totalStock);
       }
     };
@@ -122,22 +117,17 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
     currentQuantity,
   ]);
 
-  // ✅ الحصول على الكمية للعرض
   const getDisplayQuantity = () => {
     if (!isEmployee) return null;
 
-    // 1. إذا تم تحديد كمية (سواء من الـ API أو عند اختيار لون)، اعرضها
     if (currentQuantity !== null) {
       return currentQuantity;
     }
 
-    // 2. 🔥 الحل الجذري: إذا لم تكن هناك كمية محددة، اعرض إجمالي مخزون كل الألوان
-    // بدلاً من الاعتماد على product.cur_qty الذي قد يكون صفراً
     if (totalStock > 0) {
       return totalStock;
     }
 
-    // 3. الملجأ الأخير
     return product.cur_qty || 0;
   };
 
@@ -166,11 +156,12 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
     return "bg-green-100 text-green-800 border-green-200";
   };
 
+  // ✅ نصوص الكمية مترجمة للغتين
   const getQuantityText = (qty: number | null) => {
-    if (qty === null) return "📥 جاري التحقق...";
-    if (qty === 0) return "⛔ غير متوفر";
-    if (qty <= 5) return `⚠️ آخر ${qty}`;
-    return `✅ متوفر (${qty})`;
+    if (qty === null) return isArabic ? "📥 جاري التحقق..." : "📥 Checking...";
+    if (qty === 0) return isArabic ? "⛔ غير متوفر" : "⛔ Out of Stock";
+    if (qty <= 5) return isArabic ? `⚠️ آخر ${qty}` : `⚠️ Last ${qty}`;
+    return isArabic ? `✅ متوفر (${qty})` : `✅ In Stock (${qty})`;
   };
 
   const getColorHex = (colorName: string) => {
@@ -185,7 +176,6 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
       اصفر: "#eab308",
       وردي: "#ec4899",
       بنفسجي: "#8b5cf6",
-
       برتقالي: "#f97316",
       اورنج: "#f97316",
       أسود: "#000000",
@@ -230,6 +220,7 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className="relative aspect-[3/4] overflow-hidden bg-gray-100">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={mainImage}
           srcSet={imageSrcSet}
@@ -265,14 +256,14 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
               <div className="flex flex-col space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-semibold text-gray-700">
-                    الألوان المتاحة:
+                    {isArabic ? "الألوان المتاحة:" : "Available Colors:"}
                   </span>
                   <span className="text-xs text-gray-500">
-                    {product.variants.length} لون
+                    {product.variants.length} {isArabic ? "لون" : "colors"}
                   </span>
                 </div>
 
-                <div className="flex justify-center space-x-3">
+                <div className="flex justify-center space-x-3 space-x-reverse">
                   {product.variants.slice(0, 5).map((variant, index) => (
                     <button
                       key={variant.id}
@@ -282,7 +273,6 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
 
                         setCurrentImageIndex(index);
 
-                        // 🔥 تعديل هام: عند تغيير اللون، نعرض كمية هذا اللون فوراً
                         if (isEmployee) {
                           const variantQty = variant.cur_qty || 0;
                           setCurrentQuantity(variantQty);
@@ -311,10 +301,10 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
 
                       <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 opacity-0 group-hover/color:opacity-100 transition-opacity duration-200 pointer-events-none">
                         <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded-md whitespace-nowrap">
-                          {variant.color}
+                          {t(variant.color)}
                           {isEmployee && variant.cur_qty !== undefined && (
                             <div className="text-xs opacity-75">
-                              {variant.cur_qty} قطعة
+                              {variant.cur_qty} {isArabic ? "قطعة" : "pcs"}
                             </div>
                           )}
                           <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
@@ -339,12 +329,12 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
 
       <div className="p-4 flex-1 flex flex-col">
         <div className="flex justify-between items-start mb-3">
-          <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 flex-1 pr-2 leading-tight">
+          <h3 className="text-sm font-semibold line-clamp-2 flex-1 pr-2 leading-tight" style={{ color: settings.fontColor }}>
             {getProductName()}
           </h3>
           <div className="flex flex-col items-end">
-            <span className="text-lg font-bold text-blue-600 whitespace-nowrap">
-              {product.price} ج.م
+            <span className="text-lg font-bold whitespace-nowrap" style={{ color: settings.fontColor }}>
+              {product.price} {t("ج.م")}
             </span>
           </div>
         </div>
@@ -355,12 +345,12 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
           compact
         />
 
-        <div className="flex justify-between items-center text-xs text-gray-500 mb-4">
-          <span className="truncate bg-gray-100 px-2 py-1 rounded-full">
-            {product.category}
+        <div className="flex justify-between items-center text-xs mb-4">
+          <span className="truncate px-2 py-1 rounded-full" style={{ backgroundColor: `${settings.fontColor}10`, color: settings.fontColor }}>
+            {t(product.category)}
           </span>
           {product.variants.length > 0 && (
-            <div className="flex items-center space-x-1 space-x-reverse text-gray-600">
+            <div className="flex items-center space-x-1 space-x-reverse" style={{ color: settings.storeIconColor }}>
               <svg
                 className="w-3 h-3"
                 fill="none"
@@ -374,7 +364,7 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
                   d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"
                 />
               </svg>
-              <span>{product.variants.length} لون</span>
+              <span>{product.variants.length} {isArabic ? "لون" : "colors"}</span>
             </div>
           )}
         </div>
@@ -384,13 +374,18 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
             {product.variants[0].sizes.slice(0, 4).map((size) => (
               <span
                 key={size}
-                className="px-2.5 py-1 bg-gray-50 text-gray-700 text-xs rounded-lg border border-gray-200 font-medium"
+                className="px-2.5 py-1 text-xs rounded-lg border font-medium"
+                style={{
+                  backgroundColor: `${settings.fontColor}10`,
+                  borderColor: `${settings.fontColor}30`,
+                  color: settings.fontColor,
+                }}
               >
                 {size}
               </span>
             ))}
             {product.variants[0].sizes.length > 4 && (
-              <span className="px-2.5 py-1 bg-gray-100 text-gray-500 text-xs rounded-lg font-medium">
+              <span className="px-2.5 py-1 text-xs rounded-lg font-medium" style={{ backgroundColor: `${settings.fontColor}08`, color: settings.fontColor }}>
                 +{product.variants[0].sizes.length - 4}
               </span>
             )}
@@ -405,11 +400,11 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
               )}`}
             >
               <div className="flex items-center justify-between">
-                <span className="font-medium">المخزن:</span>
+                <span className="font-medium">{isArabic ? "المخزن:" : "Stock:"}</span>
                 <span>
                   {availableQuantity === 0
-                    ? "غير متوفر"
-                    : `${availableQuantity} قطعة`}
+                    ? (isArabic ? "غير متوفر" : "Out of Stock")
+                    : (isArabic ? `${availableQuantity} قطعة` : `${availableQuantity} pcs`)}
                 </span>
               </div>
             </div>
@@ -443,7 +438,7 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
               d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
             />
           </svg>
-          <span>عرض التفاصيل</span>
+          <span>{t("عرض التفاصيل")}</span>
         </button>
       </div>
     </Link>

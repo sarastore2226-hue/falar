@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCart } from "../../context/CartContext";
 import { useProducts } from "../../context/ProductsContext";
+import { useDisplay } from "../../context/DisplayContext";
+import { useLanguage } from "../../context/LanguageContext";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useCompanyInfo } from "../../hooks/useCompanyInfo";
 import { useAuth } from "../../context/AuthContext";
@@ -12,7 +14,9 @@ export default function Header() {
   const { getCartItemsCount, cartItems, getCartTotal } = useCart();
   const { categories, setSearchTerm, searchTerm } = useProducts();
   const { companyInfo, loading: companyInfoLoading } = useCompanyInfo();
-  const { user, isEmployee, isCustomer, logout } = useAuth();
+  const { user, isCustomer, logout } = useAuth();
+  const { settings } = useDisplay();
+  const { toggleLanguage, isArabic, t } = useLanguage();
   const cartCount = getCartItemsCount();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -22,8 +26,8 @@ export default function Header() {
 
   // ✅ التحقق من حالة المدير والموظف العادي
   const isManager = user?.position === "مدير";
-  const isRegularEmployee = user?.position === "موظف"; // ⬅️ جديد
-  const canAccessDashboard = isManager || isRegularEmployee; // ⬅️ جديد
+  const isRegularEmployee = user?.position === "موظف";
+  const canAccessDashboard = isManager || isRegularEmployee;
 
   // ✅ تحديث البحث المباشر مع debounce
   useEffect(() => {
@@ -43,15 +47,16 @@ export default function Header() {
 
   const navItems = useMemo(
     () => [
-      { name: "الرئيسية", href: "/" },
+      { name: t("common.home"), href: "/" },
       ...navCategories.map((category) => ({
-        name: category.name,
+        name: t(category.name),
+
         href: `/categories/${category.id}`,
       })),
-      { name: "جميع التصنيفات", href: "/categories" },
-      { name: "اتصل بنا", href: "/contact" },
+      { name: t("common.allCategories"), href: "/categories" },
+      { name: t("common.contact"), href: "/contact" },
     ],
-    [navCategories]
+    [navCategories, t]
   );
 
   const handleSearchChange = useCallback(
@@ -93,12 +98,20 @@ export default function Header() {
     return "text-gray-600 hover:text-gray-700";
   };
 
-  // ✅ الحصول على نص التلميح بناءً على الدور
+  // ✅ الحصول على نص التلميح بناءً على الدور واللغة
   const getDashboardTooltip = () => {
-    if (isManager) return "لوحة تحكم المدير";
-    if (isRegularEmployee) return "لوحة تحكم الموظف";
-    return "لوحة التحكم";
+    if (isArabic) {
+      if (isManager) return "لوحة تحكم المدير";
+      if (isRegularEmployee) return "لوحة تحكم الموظف";
+      return t("common.dashboard");
+    } else {
+      if (isManager) return "Manager Dashboard";
+      if (isRegularEmployee) return "Employee Dashboard";
+      return t("common.dashboard");
+    }
   };
+
+  const currencyLabel = isArabic ? "ج.م" : "EGP";
 
   return (
     <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
@@ -113,14 +126,18 @@ export default function Header() {
             {companyInfoLoading ? (
               <div className="w-10 h-10" aria-hidden="true" />
             ) : companyInfo?.logo ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={companyInfo.logo}
-                alt={companyInfo.company_name}
+                alt={companyInfo.company_name || "Logo"}
                 className="w-10 h-10 rounded-full object-cover"
               />
             ) : null}
             {!companyInfoLoading && companyInfo?.company_name ? (
-              <span className="text-xl font-bold text-gray-900">
+              <span
+                className="text-xl font-bold"
+                style={{ color: settings.fontColor }}
+              >
                 {companyInfo.company_name}
               </span>
             ) : null}
@@ -144,7 +161,10 @@ export default function Header() {
                 >
                   {user.username.charAt(0)}
                 </div>
-                <span className="hidden sm:block text-sm font-medium">
+                <span 
+                  className="hidden sm:block text-sm font-medium"
+                  style={{ color: settings.fontColor }}
+                >
                   {user.username}
                 </span>
                 <svg
@@ -168,6 +188,8 @@ export default function Header() {
                 href="/login"
                 className="p-2 text-gray-600 hover:text-pink-600 transition-colors hover:bg-pink-50 rounded-lg"
                 onClick={closeMenus}
+                title={t("common.login")}
+                style={{ color: settings.storeIconColor }}
               >
                 <svg
                   className="w-5 h-5"
@@ -212,7 +234,7 @@ export default function Header() {
                       onClick={closeMenus}
                     >
                       <div className="flex items-center justify-between">
-                        <span>لوحة التحكم</span>
+                        <span>{t("common.dashboard")}</span>
                         <svg
                           className="w-4 h-4"
                           fill="none"
@@ -233,7 +255,7 @@ export default function Header() {
                     onClick={handleLogout}
                     className="w-full text-right px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                   >
-                    تسجيل الخروج
+                    {t("common.logout")}
                   </button>
                 </div>
               </div>
@@ -244,17 +266,46 @@ export default function Header() {
           <nav className="hidden md:flex items-center space-x-4 space-x-reverse">
             {navItems.map((item) => (
               <Link
-                key={item.name}
+                key={item.href + item.name}
                 href={item.href}
-                className="text-gray-700 hover:text-pink-600 font-medium px-3 py-2 rounded-lg transition-colors duration-200 hover:bg-pink-50 whitespace-nowrap"
+                className="hover:text-pink-600 font-medium px-3 py-2 rounded-lg transition-colors duration-200 hover:bg-pink-50 whitespace-nowrap"
+                style={{ color: settings.fontColor }}
               >
                 {item.name}
               </Link>
             ))}
           </nav>
 
-          {/* أيقونات البحث والسلة */}
+          {/* أيقونات البحث والسلة واللغة */}
           <div className="flex items-center space-x-3 space-x-reverse">
+            
+            {/* ✅ زر تبديل اللغة الأنيق والواضح جداً */}
+            <button
+              onClick={toggleLanguage}
+              type="button"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-300 hover:border-pink-500 hover:bg-pink-50 transition-all font-semibold text-xs shadow-sm"
+              style={{ color: settings.fontColor }}
+              title={isArabic ? "Switch to English" : "الانتقال للعربية"}
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                style={{ color: settings.storeIconColor }}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.8}
+                  d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
+                />
+              </svg>
+              <span className="uppercase font-bold">
+                {isArabic ? "EN" : "عربي"}
+              </span>
+            </button>
+
             {/* ✅ إضافة أيقونة الداشبورد للمديرين والموظفين العاديين */}
             {canAccessDashboard && (
               <Link
@@ -262,6 +313,7 @@ export default function Header() {
                 className={`p-2 transition-colors rounded-lg relative group ${getDashboardIconColor()}`}
                 onClick={closeMenus}
                 title={getDashboardTooltip()}
+                style={{ color: settings.storeIconColor }}
               >
                 <svg
                   className="w-5 h-5"
@@ -289,15 +341,20 @@ export default function Header() {
 
             {/* ✅ إشعارات الطلبات المباشرة للموظفين والمديرين */}
             {canAccessDashboard && <OrderNotifications />}
+            
+            {/* لوحة العميل */}
             {isCustomer && (
               <Link
                 href="/customer/dashboard"
                 className="flex items-center text-gray-700 hover:text-blue-600 transition-colors"
+                onClick={closeMenus}
               >
                 <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center ml-2">
                   <span className="text-green-600 text-sm">👤</span>
                 </div>
-                <span className="text-sm font-medium">لوحتي</span>
+                <span className="text-sm font-medium">
+                  {isArabic ? "لوحتي" : "My Dashboard"}
+                </span>
               </Link>
             )}
 
@@ -306,10 +363,11 @@ export default function Header() {
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="ابحث عن منتج..."
+                  placeholder={t("common.search")}
                   value={localSearch}
                   onChange={handleSearchChange}
                   className="w-40 lg:w-48 h-9 pl-3 pr-9 rounded-lg bg-gray-100 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent text-sm transition-all duration-200"
+                  style={{ color: settings.fontColor }}
                 />
                 {localSearch ? (
                   <button
@@ -332,7 +390,10 @@ export default function Header() {
                     </svg>
                   </button>
                 ) : (
-                  <div className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-500">
+                  <div 
+                    className="absolute left-2 top-1/2 transform -translate-y-1/2"
+                    style={{ color: settings.storeIconColor }}
+                  >
                     <svg
                       className="w-4 h-4"
                       fill="none"
@@ -353,9 +414,10 @@ export default function Header() {
 
             {/* زر البحث للموبايل */}
             <button
-              className="sm:hidden p-2 text-gray-600 hover:text-pink-600 transition-colors hover:bg-pink-50 rounded-lg"
+              className="sm:hidden p-2 hover:text-pink-600 transition-colors hover:bg-pink-50 rounded-lg"
               onClick={() => setIsSearchOpen(true)}
               aria-label="بحث"
+              style={{ color: settings.storeIconColor }}
             >
               <svg
                 className="w-5 h-5"
@@ -380,8 +442,9 @@ export default function Header() {
             >
               <Link
                 href="/cart"
-                className="relative flex items-center text-gray-600 hover:text-pink-600 transition-colors hover:bg-pink-50 rounded-lg p-2"
+                className="relative flex items-center hover:text-pink-600 transition-colors hover:bg-pink-50 rounded-lg p-2"
                 onClick={closeMenus}
+                style={{ color: settings.storeIconColor }}
               >
                 <svg
                   className="w-5 h-5"
@@ -397,7 +460,7 @@ export default function Header() {
                   />
                 </svg>
 
-                {/* ✅ عداد السلة - بجوار الأيقونة بدلاً من فوقها */}
+                {/* عداد السلة */}
                 {cartCount > 0 && (
                   <span className="mr-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold border border-white shadow-sm">
                     {cartCount > 99 ? "99+" : cartCount}
@@ -412,10 +475,10 @@ export default function Header() {
                     {/* العنوان */}
                     <div className="flex justify-between items-center mb-3 pb-3 border-b border-gray-100">
                       <h3 className="font-semibold text-gray-900">
-                        سلة التسوق
+                        {t("cart.title")}
                       </h3>
                       <span className="text-sm text-gray-500">
-                        {cartCount} منتج
+                        {cartCount} {isArabic ? "منتج" : "items"}
                       </span>
                     </div>
 
@@ -428,6 +491,7 @@ export default function Header() {
                         >
                           {/* صورة المنتج */}
                           <div className="w-12 h-12 bg-white rounded-lg border border-gray-200 flex-shrink-0 overflow-hidden">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={
                                 item.image ||
@@ -454,7 +518,7 @@ export default function Header() {
 
                           {/* السعر */}
                           <div className="text-sm font-semibold text-blue-600 flex-shrink-0">
-                            {item.price * item.quantity} ج.م
+                            {item.price * item.quantity} {currencyLabel}
                           </div>
                         </div>
                       ))}
@@ -463,7 +527,7 @@ export default function Header() {
                       {cartItems.length > 5 && (
                         <div className="text-center py-2">
                           <span className="text-sm text-gray-500">
-                            +{cartItems.length - 5} منتجات أخرى
+                            +{cartItems.length - 5} {isArabic ? "منتجات أخرى" : "more items"}
                           </span>
                         </div>
                       )}
@@ -473,10 +537,10 @@ export default function Header() {
                     <div className="mt-4 pt-3 border-t border-gray-100">
                       <div className="flex justify-between items-center mb-3">
                         <span className="font-semibold text-gray-900">
-                          المجموع
+                          {t("cart.total")}
                         </span>
                         <span className="text-lg font-bold text-blue-600">
-                          {getCartTotal()} ج.م
+                          {getCartTotal()} {currencyLabel}
                         </span>
                       </div>
                       <Link
@@ -497,7 +561,7 @@ export default function Header() {
                             d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"
                           />
                         </svg>
-                        الذهاب إلى السلة
+                        {t("cart.title")}
                       </Link>
                     </div>
                   </div>
@@ -512,9 +576,10 @@ export default function Header() {
 
             {/* زر القائمة للموبايل */}
             <button
-              className="md:hidden p-2 text-gray-600 hover:text-pink-600 transition-colors hover:bg-pink-50 rounded-lg"
+              className="md:hidden p-2 hover:text-pink-600 transition-colors hover:bg-pink-50 rounded-lg"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               aria-label="فتح القائمة"
+              style={{ color: settings.storeIconColor }}
             >
               <svg
                 className="w-5 h-5"
@@ -539,15 +604,16 @@ export default function Header() {
             <nav className="flex flex-col space-y-2">
               {navItems.map((item) => (
                 <Link
-                  key={item.name}
+                  key={item.href + item.name}
                   href={item.href}
-                  className="text-gray-700 hover:text-pink-600 font-medium px-4 py-3 rounded-lg transition-colors duration-200 hover:bg-pink-50"
+                  className="hover:text-pink-600 font-medium px-4 py-3 rounded-lg transition-colors duration-200 hover:bg-pink-50"
                   onClick={closeMenus}
+                  style={{ color: settings.fontColor }}
                 >
                   {item.name}
                 </Link>
               ))}
-              {/* ✅ إضافة رابط الداشبورد في القائمة المتنقلة للمديرين والموظفين */}
+              {/* إضافة رابط الداشبورد في القائمة المتنقلة للمديرين والموظفين */}
               {canAccessDashboard && (
                 <Link
                   href="/dashboard"
@@ -572,7 +638,7 @@ export default function Header() {
                     />
                   </svg>
                   <span>
-                    {isManager ? "لوحة تحكم المدير" : "لوحة تحكم الموظف"}
+                    {isManager ? (isArabic ? "لوحة تحكم المدير" : "Manager Dashboard") : (isArabic ? "لوحة تحكم الموظف" : "Employee Dashboard")}
                   </span>
                 </Link>
               )}
@@ -580,17 +646,18 @@ export default function Header() {
           </div>
         )}
 
-        {/* البحث المنسدل للموبايل */}
+        {/* البحث للموبايل */}
         {isSearchOpen && (
           <div className="sm:hidden absolute top-16 left-0 right-0 bg-white border-b border-gray-200 p-4 shadow-lg">
             <div className="relative">
               <input
                 type="text"
-                placeholder="ابحث عن منتج..."
+                placeholder={t("common.search")}
                 value={localSearch}
                 onChange={handleSearchChange}
                 className="w-full h-10 pl-3 pr-9 rounded-lg bg-gray-100 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent text-sm"
                 autoFocus
+                style={{ color: settings.fontColor }}
               />
               <button
                 onClick={() => setIsSearchOpen(false)}

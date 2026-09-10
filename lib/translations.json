@@ -1,0 +1,148 @@
+{
+  "ar": {
+    "common": {
+      "home": "الرئيسية",
+      "categories": "التصنيفات",
+      "allCategories": "جميع التصنيفات",
+      "contact": "اتصل بنا",
+      "cart": "السلة",
+      "dashboard": "لوحة التحكم",
+      "logout": "تسجيل الخروج",
+      "login": "تسجيل الدخول",
+      "register": "التسجيل",
+      "search": "البحث",
+      "language": "اللغة",
+      "english": "English",
+      "arabic": "العربية"
+    },
+    "home": {
+      "title": "أحدث الموديلات",
+      "subtitle": "عرض أحدث المنتجات",
+      "categorizeBy": "التصنيف حسب النوع",
+      "latest": "أحدث الموديلات",
+      "noProducts": "لا توجد منتجات للعرض",
+      "viewDetails": "عرض التفاصيل"
+    },
+    "categories": {
+      "title": "جميع التصنيفات",
+      "gender": "قسم: ",
+      "type": "قسم: ",
+      "seasonal": {
+        "winter": "شتوي",
+        "summer": "صيفي"
+      }
+    },
+    "cart": {
+      "title": "سلة التسوق",
+      "empty": "سلة التسوق فارغة",
+      "continue": "متابعة التسوق",
+      "checkout": "إتمام الشراء",
+      "total": "المجموع",
+      "quantity": "الكمية",
+      "price": "السعر"
+    },
+    "product": {
+      "title": "تفاصيل المنتج",
+      "color": "اللون",
+      "size": "الحجم",
+      "quantity": "الكمية",
+      "addToCart": "أضف إلى السلة",
+      "availableColors": "الألوان المتاحة",
+      "inStock": "متوفر",
+      "outOfStock": "غير متوفر"
+    },
+    "orders": {
+      "title": "الطلبات",
+      "myOrders": "طلباتي",
+      "orderNumber": "رقم الطلب",
+      "date": "التاريخ",
+      "status": "الحالة",
+      "total": "المجموع",
+      "details": "التفاصيل"
+    },
+    "dashboard": {
+      "title": "لوحة التحكم",
+      "overview": "نظرة عامة",
+      "products": "المنتجات",
+      "categories": "التصنيفات",
+      "orders": "الطلبات",
+      "users": "المستخدمون",
+      "promotions": "العروض",
+      "settings": "الإعدادات",
+      "displaySettings": "ضبط العرض"
+    }
+  },
+  "en": {
+    "common": {
+      "home": "Home",
+      "categories": "Categories",
+      "allCategories": "All Categories",
+      "contact": "Contact Us",
+      "cart": "Cart",
+      "dashboard": "Dashboard",
+      "logout": "Logout",
+      "login": "Login",
+      "register": "Register",
+      "search": "Search",
+      "language": "Language",
+      "english": "English",
+      "arabic": "العربية"
+    },
+    "home": {
+      "title": "Latest Models",
+      "subtitle": "Showing the latest products",
+      "categorizeBy": "Browse by Type",
+      "latest": "Latest Models",
+      "noProducts": "No products to display",
+      "viewDetails": "View Details"
+    },
+    "categories": {
+      "title": "All Categories",
+      "gender": "Section: ",
+      "type": "Section: ",
+      "seasonal": {
+        "winter": "Winter",
+        "summer": "Summer"
+      }
+    },
+    "cart": {
+      "title": "Shopping Cart",
+      "empty": "Your cart is empty",
+      "continue": "Continue Shopping",
+      "checkout": "Checkout",
+      "total": "Total",
+      "quantity": "Quantity",
+      "price": "Price"
+    },
+    "product": {
+      "title": "Product Details",
+      "color": "Color",
+      "size": "Size",
+      "quantity": "Quantity",
+      "addToCart": "Add to Cart",
+      "availableColors": "Available Colors",
+      "inStock": "In Stock",
+      "outOfStock": "Out of Stock"
+    },
+    "orders": {
+      "title": "Orders",
+      "myOrders": "My Orders",
+      "orderNumber": "Order Number",
+      "date": "Date",
+      "status": "Status",
+      "total": "Total",
+      "details": "Details"
+    },
+    "dashboard": {
+      "title": "Dashboard",
+      "overview": "Overview",
+      "products": "Products",
+      "categories": "Categories",
+      "orders": "Orders",
+      "users": "Users",
+      "promotions": "Promotions",
+      "settings": "Settings",
+      "displaySettings": "Display Settings"
+    }
+  }
+}

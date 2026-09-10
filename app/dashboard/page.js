@@ -131,6 +131,15 @@ export default function Dashboard() {
         bgColor: "bg-orange-50",
         count: `${stats.totalOrders} طلب`,
       },
+      {
+        title: "ضبط العرض",
+        description: "تخصيص ألوان الفونت والأيقونات للمتجر والعروض",
+        icon: "⚙️",
+        href: "/dashboard/display-settings",
+        color: "from-violet-500 to-violet-600",
+        bgColor: "bg-violet-50",
+        count: "إعدادات",
+      },
     ];
 
     const managerCards = [

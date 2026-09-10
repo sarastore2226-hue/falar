@@ -1,0 +1,256 @@
+.container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  color: white;
+  direction: rtl;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 2rem;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+  padding-bottom: 1rem;
+}
+
+.header h1 {
+  font-size: 2.5rem;
+  margin: 0 0 0.5rem 0;
+  font-weight: bold;
+}
+
+.header p {
+  font-size: 1.1rem;
+  margin: 0;
+  opacity: 0.9;
+}
+
+.successMessage {
+  background: #4CAF50;
+  color: white;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  text-align: center;
+  font-weight: bold;
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.settingsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.settingCard {
+  background: rgba(255, 255, 255, 0.95);
+  padding: 1.5rem;
+  border-radius: 10px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  color: #333;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.settingCard:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+}
+
+.settingHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.settingHeader h3 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.colorLabel {
+  background: #f0f0f0;
+  padding: 0.4rem 0.8rem;
+  border-radius: 20px;
+  font-family: monospace;
+  font-size: 0.9rem;
+  color: #666;
+  font-weight: bold;
+}
+
+.colorPickerWrapper {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.colorPicker {
+  width: 100px;
+  height: 100px;
+  border: 3px solid #ddd;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.3s ease;
+}
+
+.colorPicker:hover {
+  border-color: #667eea;
+}
+
+.colorPreview {
+  flex: 1;
+  height: 100px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  font-weight: bold;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.currentSettings {
+  background: rgba(255, 255, 255, 0.15);
+  padding: 1.5rem;
+  border-radius: 10px;
+  margin-bottom: 2rem;
+  border-left: 4px solid rgba(255, 255, 255, 0.5);
+}
+
+.currentSettings h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  font-size: 1.2rem;
+}
+
+.settingsList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.settingItem {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 1rem;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.95rem;
+}
+
+.settingItem span:first-child {
+  font-weight: 600;
+}
+
+.colorBox {
+  display: inline-block;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.actions {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.resetButton {
+  background: #ff6b6b;
+  color: white;
+  border: none;
+  padding: 0.8rem 1.5rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+}
+
+.resetButton:hover {
+  background: #ff5252;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(255, 107, 107, 0.4);
+}
+
+.resetButton:active {
+  transform: translateY(0);
+}
+
+.colorCodeInput {
+  width: 100%;
+  padding: 0.8rem;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 0.95rem;
+  margin-top: 0.8rem;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  direction: ltr;
+  text-align: left;
+}
+
+.colorCodeInput:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 8px rgba(102, 126, 234, 0.3);
+}
+
+.colorCodeInput::placeholder {
+  color: #999;
+}
+
+.errorInput {
+  border-color: #ff6b6b !important;
+  background-color: #fff5f5;
+}
+
+.errorMessage {
+  display: block;
+  color: #ff6b6b;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .header h1 {
+    font-size: 1.8rem;
+  }
+
+  .settingsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .colorPickerWrapper {
+    flex-direction: column;
+  }
+
+  .colorPicker,
+  .colorPreview {
+    width: 100%;
+  }
+}
