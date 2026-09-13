@@ -28,8 +28,8 @@ function playChime() {
 
     playNote(880, now, 0.5, "sine");
     playNote(1320, now + 0.18, 0.5, "sine");
-  } catch (error) {
-    /* audio not supported */
+  } catch {
+    /* تم حذف (error) غير المستخدم */
   }
 }
 
@@ -75,7 +75,8 @@ export default function OrderNotifications() {
         hour: "2-digit",
         minute: "2-digit",
       });
-    } catch (error) {
+    } catch {
+      /* تم حذف (error) غير المستخدم */
       return "";
     }
   }, []);
@@ -188,7 +189,7 @@ export default function OrderNotifications() {
             <span className="absolute bottom-1 left-1 w-2.5 h-2.5 bg-green-500 rounded-full border border-white"></span>
           )}
 
-          {/* عداد الطلبات تحت التجهيز (لا يوجد رد فعل بعد) */}
+          {/* عداد الطلبات */}
           {pendingCount > 0 && (
             <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold border border-white shadow-sm">
               {pendingCount > 99 ? "99+" : pendingCount}
