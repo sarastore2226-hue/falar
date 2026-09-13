@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -58,8 +58,8 @@ export async function GET() {
   }
 }
 
-// ✅ إضافة PUT method لتحديث بيانات الشركة
-export async function PUT(request) {
+// ✅ إضافة PUT method لتحديث بيانات الشركة مع تحديد نوع NextRequest
+export async function PUT(request: NextRequest) {
   try {
     const data = await request.json();
 
@@ -123,8 +123,8 @@ export async function PUT(request) {
   }
 }
 
-// ✅ إضافة POST method كبديل إذا كان هناك مشكلة مع PUT
-export async function POST(request) {
+// ✅ إضافة POST method كبديل إذا كان هناك مشكلة مع PUT مع تحديد نوع NextRequest
+export async function POST(request: NextRequest) {
   try {
     const data = await request.json();
 

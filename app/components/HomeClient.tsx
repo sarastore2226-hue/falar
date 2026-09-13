@@ -10,7 +10,6 @@ import Footer from "./Footer";
 import Link from "next/link";
 import PromotionNotice from "./PromotionNotice";
 
-// استخراج نوع المنتج من ProductCard تلقائياً لضمان التطابق 100% وبدون أي any
 type Product = React.ComponentProps<typeof ProductCard>["product"] & {
   modelId?: string | number;
   description?: string;
@@ -33,10 +32,9 @@ interface HomeClientProps {
 export default function HomeClient({ initialProducts = [], initialCategories = [] }: HomeClientProps) {
   const { settings } = useDisplay();
   const { isArabic, t } = useLanguage();
-  const { searchTerm } = useProducts(); // ✅ جلب البحث مباشرة من context المتجر لربط الهيدر بالرئيسية
+  const { searchTerm } = useProducts();
   const [displayProducts, setDisplayProducts] = useState<Product[]>(() => initialProducts.slice(0, 12));
 
-  // ✅ تفعيل الوضع العشوائي عند التحميل الأول
   useEffect(() => {
     if (initialProducts.length > 0) {
       const shuffled = [...initialProducts].sort(() => 0.5 - Math.random());
@@ -44,7 +42,6 @@ export default function HomeClient({ initialProducts = [], initialCategories = [
     }
   }, [initialProducts]);
 
-  // ✅ الفلترة التلقائية عند البحث من شريط الهيدر
   useEffect(() => {
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
@@ -58,7 +55,6 @@ export default function HomeClient({ initialProducts = [], initialCategories = [
     }
   }, [searchTerm, initialProducts]);
 
-  // ✅ تجهيز التصنيفات وصورة الهيرو
   const displayCategories = useMemo(() => {
     return initialCategories
       .filter((cat: Category) => cat.kind === "جنس" && !cat.sub && cat.name !== "خلفية" && cat.image)
@@ -69,13 +65,11 @@ export default function HomeClient({ initialProducts = [], initialCategories = [
     return initialCategories.find((cat: Category) => cat.name === "خلفية")?.image || "";
   }, [initialCategories]);
 
-  // ✅ التحقق من الموظف
   const [isEmployee, setIsEmployee] = useState(false);
   useEffect(() => {
     setIsEmployee(!!localStorage.getItem("employee"));
   }, []);
 
-  // دالة ذكية لترجمة أسماء التصنيفات الأساسية
   const formatCategoryName = (name: string) => {
     if (isArabic) return name;
     const categoryTranslations: Record<string, string> = {
@@ -113,6 +107,7 @@ export default function HomeClient({ initialProducts = [], initialCategories = [
       {displayCategories.length > 0 && (
         <section className="py-16 bg-[#fdf6f8]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            {/* عنوان قسم التصنيفات يتبع fontColor */}
             <h2 
               className="text-3xl md:text-4xl font-extrabold text-center mb-12" 
               style={{ color: settings.fontColor }}
@@ -137,7 +132,11 @@ export default function HomeClient({ initialProducts = [], initialCategories = [
                     </div>
                     <div className="relative z-10 w-full pt-32 md:pt-48">
                       <div className="bg-white/90 backdrop-blur-sm rounded-full mx-4 py-3 px-4 border border-white/50">
-                        <p className="text-gray-800 text-lg font-bold">
+                        {/* ✅ عنوان واسم التصنيف داخل الكارت أصبح يتبع fontColor */}
+                        <p 
+                          className="text-lg font-bold"
+                          style={{ color: settings.fontColor }}
+                        >
                           {formatCategoryName(cat.name)}
                         </p>
                       </div>

@@ -50,7 +50,7 @@ export default function PromotionNotice({
 
   if (promotions.length === 0) return null;
 
-  // 1. الوضع المصغر (في بطاقات المنتجات)
+  // 1. الوضع المصغر
   if (compact) {
     return (
       <div
@@ -67,7 +67,7 @@ export default function PromotionNotice({
     );
   }
 
-  // 2. الوضع الكامل (في الصفحة الرئيسية)
+  // 2. الوضع الكامل (الصفحة الرئيسية)
   if (all) {
     return (
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -105,13 +105,16 @@ export default function PromotionNotice({
                 </span>
               </div>
               
-              {/* ✅ ترجمة اسم العرض هنا */}
-              <p className="mt-4 text-xl font-black leading-tight text-gray-900">
+              {/* ✅ عنوان واسم العرض أصبح يتبع promotionIconColor */}
+              <p 
+                className="mt-4 text-xl font-black leading-tight"
+                style={{ color: settings.promotionIconColor }}
+              >
                 {t(promotion.name)}
               </p>
 
               <p
-                className="mt-2 text-sm font-bold"
+                className="mt-2 text-sm font-bold opacity-90"
                 style={{ color: settings.promotionIconColor }}
               >
                 {isArabic
@@ -170,16 +173,19 @@ export default function PromotionNotice({
         border: `2px solid ${settings.promotionIconColor}`,
       }}
     >
-      <p className="text-lg font-extrabold">
+      <p 
+        className="text-lg font-extrabold"
+        style={{ color: settings.promotionIconColor }}
+      >
         {isArabic
           ? "عروض وخصومات خاصة متاحة الآن"
           : "Special Offers & Discounts Available Now"}
       </p>
       <div className="mt-2 space-y-1 text-base font-semibold">
         {promotions.map((promotion) => (
-          <p key={promotion.id}>
-            {/* ✅ ترجمة اسم العرض هنا */}
-            <span className="font-semibold">{t(promotion.name)}</span>
+          <p key={promotion.id} style={{ color: settings.promotionIconColor }}>
+            {/* ✅ اسم العرض يتبع promotionIconColor */}
+            <span className="font-extrabold">{t(promotion.name)}</span>
             {promotion.category?.name
               ? isArabic
                 ? ` على ${t(promotion.category.name)}`
