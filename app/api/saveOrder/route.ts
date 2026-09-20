@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { pricePromotionItems } from "../../../lib/promotions";
+import { createPaymobCheckoutSession } from "../../../lib/paymob";
 
 const prisma = new PrismaClient();
 
-// Define types for better TypeScript support
 interface OrderItem {
   product: string;
   color?: string;
-  size?: string; // ✅ إضافة size
+  size?: string;
   quantity: number;
   price: number;
   item_code?: string;
@@ -20,10 +20,10 @@ interface OrderRequest {
   address: string;
   phone: string;
   items: OrderItem[];
-  total_price: number;
+  total_price?: number;
+  payment_method?: "cod" | "paymob";
 }
 
-// رسالة خطأ واضحة عندما لا تتوفر كمية كافية
 class InsufficientStockError extends Error {
   constructor(message: string) {
     super(message);
@@ -33,10 +33,8 @@ class InsufficientStockError extends Error {
 
 export async function POST(request: Request) {
   try {
-    // 1. Parse the incoming order data from the request body
     const orderData: OrderRequest = await request.json();
 
-    // 2. Validate the data
     if (
       !orderData ||
       !orderData.customer_name ||
@@ -51,25 +49,22 @@ export async function POST(request: Request) {
       );
     }
 
-    const { customer_name, address, phone, items, total_price } = orderData;
-    const newOrderId = "ORD-" + new Date().getTime(); // Generate a unique order ID
+    // ✅ تم حذف total_price من هنا لحل خطأ ESLint
+    const { customer_name, address, phone, items, payment_method = "cod" } = orderData;
+    const newOrderId = "ORD-" + new Date().getTime();
     const pricedOrder = await pricePromotionItems(prisma, items);
 
-    // ✅ تعديل: دمج اسم المنتج + اللون + المقاس في عمود product
     const orderItemsWithMergedNames = items.map((item) => ({
       ...item,
-      // دمج اسم المنتج مع اللون والمقاس
       product: `${item.product} - اللون: ${item.color || "غير محدد"} - المقاس: ${item.size || "غير محدد"}`,
     }));
 
-    // 3. Use a Prisma transaction to save everything safely
+    // حفظ الطلب في قاعدة البيانات وتنقيص المخزون بأمان
     await prisma.$transaction(async (tx) => {
-      // 3.1 التحقق من المخزون وتنقيصه أولاً (قبل إنشاء الطلب)
       for (const item of items) {
         const itemCode = item.item_code?.trim();
         if (!itemCode) continue;
 
-        // العثور على المنتج المطابق
         const product = await tx.products.findFirst({
           where: { item_code: itemCode },
         });
@@ -78,14 +73,12 @@ export async function POST(request: Request) {
 
         const availableQty = Number(product.cur_qty) || 0;
 
-        // التحقق من توفر الكمية المطلوبة
         if (availableQty < item.quantity) {
           throw new InsufficientStockError(
             `الكمية المتاحة غير كافية للمنتج "${item.product}" — المطلوب: ${item.quantity}، المتاح: ${availableQty}`
           );
         }
 
-        // تنقيص المخزون
         await tx.products.update({
           where: { unique_id: product.unique_id },
           data: {
@@ -94,7 +87,6 @@ export async function POST(request: Request) {
         });
       }
 
-      // Create the main order record
       await tx.orders.create({
         data: {
           id: newOrderId,
@@ -102,16 +94,15 @@ export async function POST(request: Request) {
           address: address,
           phone: phone,
           total_price: pricedOrder.total,
-          status: "تحت التجهيز",
+          status: payment_method === "paymob" ? "بانتظار الدفع" : "تحت التجهيز",
         },
       });
 
-      // Create the associated order items
-      for (const [index, item] of orderItemsWithMergedNames.entries()) { // ✅ استخدام البيانات المدمجة
+      for (const [index, item] of orderItemsWithMergedNames.entries()) {
         await tx.order_items.create({
           data: {
             order_id: newOrderId,
-            product: item.product, // ✅ الآن يحتوي على الاسم + اللون + المقاس
+            product: item.product,
             quantity: item.quantity,
             price: pricedOrder.items[index].finalUnitPrice,
             color: item.color || "",
@@ -121,7 +112,45 @@ export async function POST(request: Request) {
       }
     });
 
-    // 4. Send a success response back to the client
+    // 💳 إذا اختار العميل الدفع الإلكتروني عبر Paymob
+    if (payment_method === "paymob") {
+      try {
+        const names = customer_name.trim().split(" ");
+        const firstName = names[0] || "عميل";
+        const lastName = names.slice(1).join(" ") || "متجر";
+
+        const { checkoutUrl } = await createPaymobCheckoutSession({
+          amountCents: Math.round(pricedOrder.total * 100),
+          orderId: newOrderId,
+          customer: {
+            first_name: firstName,
+            last_name: lastName,
+            phone: phone,
+            street: address,
+          },
+        });
+
+        return NextResponse.json({
+          success: true,
+          orderId: newOrderId,
+          paymentUrl: checkoutUrl,
+        });
+      } catch (paymobErr: unknown) {
+        const errorMsg = paymobErr instanceof Error ? paymobErr.message : "فشل في الاتصال ببوابة الدفع";
+        console.error("❌ Paymob checkout error:", errorMsg);
+
+        // إرجاع رسالة الخطأ للعميل مباشرة في الشاشة بدلاً من حفظه كاش تلقائياً
+        return NextResponse.json(
+          {
+            success: false,
+            error: errorMsg,
+          },
+          { status: 500 }
+        );
+      }
+    }
+
+    // الدفع عند الاستلام كاش
     return NextResponse.json({
       success: true,
       orderId: newOrderId,
@@ -129,14 +158,12 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("Error in saveOrder API:", error);
-    // إرجاع رسالة واضحة للمستخدم عند نقص المخزون
     if (error instanceof InsufficientStockError) {
       return NextResponse.json(
         { success: false, error: error.message },
         { status: 400 }
       );
     }
-    // In case of an error, send a generic error message
     return NextResponse.json(
       { success: false, error: "فشل في حفظ الطلب." },
       { status: 500 }

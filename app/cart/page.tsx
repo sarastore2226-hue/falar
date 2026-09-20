@@ -17,6 +17,9 @@ export default function CartPage() {
     Array<{ name: string; category: string; quantity: number; savings: number }>
   >([]);
 
+  // ✅ وسيلة الدفع: إلكتروني عبر Paymob أو نقداً عند الاستلام
+  const [paymentMethod, setPaymentMethod] = useState<"paymob" | "cod">("paymob");
+
   // بيانات العميل - سيتم ملؤها تلقائياً
   const [customerData, setCustomerData] = useState({
     name: "",
@@ -68,12 +71,11 @@ export default function CartPage() {
 
   const subtotal = promotionTotal ?? getCartTotal();
   const promotionDiscount = Math.max(0, getCartTotal() - subtotal);
-  // ✅ إلغاء الشحن والضريبة
-  const shipping = 0; // مجاني دائماً
-  const tax = 0; // إلغاء الضريبة
-  const total = subtotal; // ✅ المجموع الكلي = المجموع الفرعي فقط
+  
+  // ✅ المجموع الكلي = المجموع الفرعي (تمت إزالة المتغيرات غير المستخدمة لحل خطأ ESLint)
+  const total = subtotal;
 
-  // ✅ جديد: جلب بيانات العميل من localStorage تلقائياً
+  // ✅ جلب بيانات العميل من localStorage تلقائياً
   useEffect(() => {
     const loadCustomerData = () => {
       try {
@@ -81,13 +83,11 @@ export default function CartPage() {
         const savedAddress = localStorage.getItem("customer_address");
 
         if (customer) {
-          const customerData = JSON.parse(customer);
-          console.log("👤 بيانات العميل المحملة:", customerData);
-
+          const parsedData = JSON.parse(customer);
           setCustomerData({
-            name: customerData.username || "",
-            phone: customerData.phone || "",
-            address: savedAddress || "", // تحميل العنوان المحفوظ
+            name: parsedData.username || "",
+            phone: parsedData.phone || "",
+            address: savedAddress || "",
           });
         }
       } catch (error) {
@@ -98,9 +98,8 @@ export default function CartPage() {
     loadCustomerData();
   }, []);
 
-  // ✅ دالة إرسال الطلب - محدثة
+  // ✅ دالة إرسال الطلب مع دعم Paymob
   const handleSubmitOrder = async () => {
-    // التحقق من اكتمال البيانات
     if (!customerData.name || !customerData.address || !customerData.phone) {
       setOrderError("يرجى ملء جميع بيانات العميل");
       return;
@@ -114,6 +113,7 @@ export default function CartPage() {
         customer_name: customerData.name,
         address: customerData.address,
         phone: customerData.phone,
+        payment_method: paymentMethod, // ✅ إرسال طريقة الدفع المختارة
         items: cartItems.map((item) => ({
           product: item.name,
           quantity: item.quantity || 1,
@@ -127,8 +127,6 @@ export default function CartPage() {
         total_price: total,
       };
 
-      console.log("📦 بيانات الطلب المرسلة:", orderData);
-
       const response = await fetch("/api/saveOrder", {
         method: "POST",
         headers: {
@@ -140,11 +138,17 @@ export default function CartPage() {
       const result = await response.json();
 
       if (result.success) {
-        // ✅ حفظ العنوان للطلبات القادمة
         localStorage.setItem("customer_address", customerData.address);
-
-        setOrderSuccess(true);
         clearCart();
+
+        // 💳 إذا اختار العميل Paymob وكان هناك رابط دفع، يتم التحويل فوراً
+        if (result.paymentUrl) {
+          window.location.href = result.paymentUrl;
+          return;
+        }
+
+        // إذا كان الدفع عند الاستلام كاش
+        setOrderSuccess(true);
       } else {
         setOrderError(result.error || "فشل في إرسال الطلب");
       }
@@ -156,9 +160,7 @@ export default function CartPage() {
     }
   };
 
-  // ✅ دالة إزالة المنتج - محدثة
   const handleRemoveItem = (itemId: string) => {
-    console.log("🗑️ إزالة المنتج بالـ ID:", itemId);
     removeFromCart(itemId);
   };
 
@@ -258,14 +260,12 @@ export default function CartPage() {
       <Header />
 
       <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        {/* رأس الصفحة */}
         <div className="mb-8 text-center">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">سلة التسوق</h1>
           <p className="text-gray-600 text-lg">راجع مشترياتك وأكمل الطلب</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* قائمة المنتجات */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-2xl shadow-lg p-6">
               <div className="flex justify-between items-center mb-6">
@@ -275,7 +275,7 @@ export default function CartPage() {
                 <span className="text-gray-600 text-sm">
                   إجمالي العناصر:{" "}
                   {cartItems.reduce(
-                    (total, item) => total + (item.quantity || 1),
+                    (totalCount, item) => totalCount + (item.quantity || 1),
                     0
                   )}
                 </span>
@@ -298,8 +298,9 @@ export default function CartPage() {
                     key={item.id}
                     className="flex flex-col sm:flex-row gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200 hover:border-blue-300 transition-all duration-300"
                   >
-                    {/* صورة المنتج */}
+                    {/* صورة المنتج مع حل تحذير ESLint */}
                     <div className="flex-shrink-0">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={item.image}
                         alt={item.name}
@@ -311,7 +312,6 @@ export default function CartPage() {
                       />
                     </div>
 
-                    {/* معلومات المنتج */}
                     <div className="flex-grow">
                       <div className="flex justify-between items-start mb-2">
                         <h3 className="font-semibold text-gray-900 text-lg">
@@ -320,6 +320,7 @@ export default function CartPage() {
                         <button
                           onClick={() => handleRemoveItem(item.id)}
                           className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                          aria-label="حذف العنصر"
                         >
                           <svg
                             className="w-5 h-5"
@@ -337,7 +338,6 @@ export default function CartPage() {
                         </button>
                       </div>
 
-                      {/* كود الصنف و master_code - محدث */}
                       <div className="flex flex-wrap gap-2 mb-3">
                         {item.master_code && (
                           <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-md font-mono">
@@ -367,7 +367,6 @@ export default function CartPage() {
                       </div>
 
                       <div className="flex justify-between items-center">
-                        {/* تعديل الكمية - محدث */}
                         <div className="flex items-center space-x-3 space-x-reverse">
                           <button
                             onClick={() =>
@@ -375,6 +374,7 @@ export default function CartPage() {
                             }
                             className="w-8 h-8 flex items-center justify-center border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             disabled={(item.quantity || 1) <= 1}
+                            aria-label="تقليل الكمية"
                           >
                             <svg
                               className="w-4 h-4 text-gray-600"
@@ -403,6 +403,7 @@ export default function CartPage() {
                             disabled={
                               (item.quantity || 1) >= (item.maxQuantity || 999)
                             }
+                            aria-label="زيادة الكمية"
                           >
                             <svg
                               className="w-4 h-4 text-gray-600"
@@ -420,7 +421,6 @@ export default function CartPage() {
                           </button>
                         </div>
 
-                        {/* السعر */}
                         <div className="text-right">
                           <div className="text-xl font-bold text-gradient">
                             {(
@@ -440,7 +440,6 @@ export default function CartPage() {
                 ))}
               </div>
 
-              {/* استمرار التسوق */}
               <div className="mt-8 pt-6 border-t border-gray-200">
                 <Link
                   href="/"
@@ -464,13 +463,11 @@ export default function CartPage() {
               </div>
             </div>
 
-            {/* نموذج بيانات العميل */}
             <div className="bg-white rounded-2xl shadow-lg p-6 mt-6">
               <h2 className="text-xl font-bold text-gray-900 mb-6">
                 بيانات العميل
               </h2>
 
-              {/* ✅ جديد: رسالة توضيحية */}
               {customerData.name && (
                 <div className="mb-6 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="flex items-center space-x-2 space-x-reverse">
@@ -545,7 +542,7 @@ export default function CartPage() {
                       })
                     }
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="05XXXXXXXX"
+                    placeholder="01XXXXXXXXX"
                   />
                 </div>
 
@@ -568,17 +565,88 @@ export default function CartPage() {
                 </div>
               </div>
 
-              {/* ✅ نقل زر إتمام الشراء هنا تحت بيانات العميل */}
+              {/* 💳 ✅ قسم اختيار وسيلة الدفع */}
+              <div className="mt-8 pt-6 border-t border-gray-200">
+                <h3 className="text-lg font-bold text-gray-900 mb-4">
+                  طريقة الدفع
+                </h3>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* خيار Paymob الإلكتروني */}
+                  <label
+                    onClick={() => setPaymentMethod("paymob")}
+                    className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      paymentMethod === "paymob"
+                        ? "border-emerald-600 bg-emerald-50/50 shadow-sm"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="radio"
+                        name="payment"
+                        checked={paymentMethod === "paymob"}
+                        onChange={() => setPaymentMethod("paymob")}
+                        className="w-5 h-5 text-emerald-600"
+                      />
+                      <div>
+                        <p className="font-bold text-gray-900 text-sm sm:text-base">
+                          دفع إلكتروني آمن
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          فيزا / ماستركارد / ميزة / محافظ إلكترونية
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-2xl">💳</span>
+                  </label>
+
+                  {/* خيار الدفع عند الاستلام */}
+                  <label
+                    onClick={() => setPaymentMethod("cod")}
+                    className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      paymentMethod === "cod"
+                        ? "border-emerald-600 bg-emerald-50/50 shadow-sm"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="radio"
+                        name="payment"
+                        checked={paymentMethod === "cod"}
+                        onChange={() => setPaymentMethod("cod")}
+                        className="w-5 h-5 text-emerald-600"
+                      />
+                      <div>
+                        <p className="font-bold text-gray-900 text-sm sm:text-base">
+                          الدفع عند الاستلام
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          ادفع نقداً لمندوب الشحن عند المعاينة
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-2xl">💵</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* زر تأكيد الطلب */}
               <div className="mt-8 pt-6 border-t border-gray-200">
                 <button
                   onClick={handleSubmitOrder}
                   disabled={isSubmitting}
                   className="w-full rounded-xl border-2 border-emerald-700 bg-emerald-600 px-4 py-4 text-lg font-bold text-white shadow-lg shadow-emerald-600/25 transition-all duration-200 hover:bg-emerald-700 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-emerald-200 disabled:cursor-not-allowed disabled:border-gray-400 disabled:bg-gray-400 disabled:shadow-none"
                 >
-                  {isSubmitting ? "جاري إرسال الطلب..." : "إتمام الشراء"}
+                  {isSubmitting
+                    ? "جاري المعالجة..."
+                    : paymentMethod === "paymob"
+                    ? `الانتقال للدفع الآمن (${total.toLocaleString()} ج.م)`
+                    : `تأكيد الطلب والدفع عند الاستلام (${total.toLocaleString()} ج.م)`}
                 </button>
                 
-                {/* ✅ ضمانات إضافية */}
+                {/* الضمانات الأصلية */}
                 <div className="mt-6 space-y-3 text-sm text-gray-600">
                   <div className="flex items-center space-x-2 space-x-reverse">
                     <svg
@@ -607,7 +675,7 @@ export default function CartPage() {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         strokeWidth={2}
-                        d="M5 13l4-4L19 7"
+                        d="M5 13l4 4L19 7"
                       />
                     </svg>
                     <span>إرجاع مجاني خلال 14 يوم</span>
@@ -640,7 +708,6 @@ export default function CartPage() {
                 ملخص الطلب
               </h2>
 
-              {/* تفاصيل الأسعار */}
               <div className="space-y-4 mb-6">
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">المجموع الفرعي</span>
@@ -658,9 +725,6 @@ export default function CartPage() {
                   </div>
                 )}
 
-                {/* ✅ إزالة سطور الشحن والضريبة */}
-
-                {/* ✅ رسالة الشحن المجاني */}
                 {subtotal < 2000 ? (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                     <div className="flex items-center space-x-2 space-x-reverse">
@@ -716,8 +780,6 @@ export default function CartPage() {
                   </div>
                 </div>
               </div>
-
-              {/* ✅ إزالة زر إتمام الشراء من هنا */}
             </div>
           </div>
         </div>
