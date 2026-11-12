@@ -40,6 +40,14 @@ interface ProductSearchResponse {
   }>;
 }
 
+// دالة لفك Base64 مع دعم الحروف العربية والـ UTF-8 بأمان تام
+function safeBase64DecodeUtf8(base64Payload: string): string {
+  const base64 = base64Payload.replace(/-/g, "+").replace(/_/g, "/");
+  const binaryString = atob(base64);
+  const bytes = Uint8Array.from(binaryString, (char) => char.charCodeAt(0));
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
 function OrderViewContent() {
   const searchParams = useSearchParams();
 
@@ -57,21 +65,21 @@ function OrderViewContent() {
       return;
     }
 
-    // 1. تسجيل الدخول التلقائي للعميل في المتجر عبر التوكن
+    // 1. تسجيل الدخول التلقائي للعميل في المتجر مع الحفاظ على الحروف العربية سليمة
     if (token) {
       try {
         const [base64Payload] = token.split(".");
         if (base64Payload) {
-          const payload = JSON.parse(
-            atob(base64Payload.replace(/-/g, "+").replace(/_/g, "/"))
-          );
+          const decodedJson = safeBase64DecodeUtf8(base64Payload);
+          const payload = JSON.parse(decodedJson);
+
           if (payload && payload.phone) {
             localStorage.setItem(
               "customer",
               JSON.stringify({
                 userid: payload.userId,
                 usercode: payload.usercode,
-                username: payload.username,
+                username: payload.username, // الاسم العربي سيكون سليماً 100%
                 phone: payload.phone,
                 position: "عميل",
                 permissions: "view_products",
