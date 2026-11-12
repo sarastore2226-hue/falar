@@ -33,7 +33,7 @@ export default function PrintOrder({ order, onClose, onPrint, onExport }) {
         <tbody>
           ${order.items
             ?.map(
-              (item, index) => `
+              (item) => `
             <tr>
               <td class="product-code">${item.item_code || "غير محدد"}</td>
               <td class="product-name">${

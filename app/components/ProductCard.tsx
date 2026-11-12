@@ -8,6 +8,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import PromotionNotice from "./PromotionNotice";
 
+const PIECES_PER_SERIA = 4;
+
 interface Product {
   modelId: string;
   price: number;
@@ -38,7 +40,6 @@ interface ProductCardProps {
   priority?: boolean;
 }
 
-// سنخزن كميات الموظف في متغير خارجي
 const employeeQuantitiesCache: Map<string, number> = new Map();
 
 export default function ProductCard({ product, priority = false }: ProductCardProps) {
@@ -48,22 +49,18 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
 
   const { isEmployee } = useAuth();
   const { settings } = useDisplay();
-  const { t, isArabic } = useLanguage(); // ✅ ربط نظام اللغات
+  const { t, isArabic } = useLanguage();
 
-  // الحالة الافتراضية للكمية
   const [currentQuantity, setCurrentQuantity] = useState<number | null>(null);
 
-  // حساب إجمالي المخزون من جميع الألوان المتاحة
   const totalStock = product.variants.reduce(
     (acc, variant) => acc + (variant.cur_qty || 0),
     0
   );
 
-  // جلب كميات الموظف عند تحميل المكون
   useEffect(() => {
     const fetchEmployeeQuantities = async () => {
       if (!isEmployee) return;
-
       if (currentQuantity !== null) return;
 
       try {
@@ -119,19 +116,16 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
 
   const getDisplayQuantity = () => {
     if (!isEmployee) return null;
-
-    if (currentQuantity !== null) {
-      return currentQuantity;
-    }
-
-    if (totalStock > 0) {
-      return totalStock;
-    }
-
+    if (currentQuantity !== null) return currentQuantity;
+    if (totalStock > 0) return totalStock;
     return product.cur_qty || 0;
   };
 
   const availableQuantity = getDisplayQuantity();
+  const availableSeries =
+    availableQuantity !== null
+      ? Math.floor(availableQuantity / PIECES_PER_SERIA)
+      : null;
 
   const getProductName = () => {
     const desc = product.description.trim();
@@ -156,12 +150,11 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
     return "bg-green-100 text-green-800 border-green-200";
   };
 
-  // ✅ نصوص الكمية مترجمة للغتين
   const getQuantityText = (qty: number | null) => {
     if (qty === null) return isArabic ? "📥 جاري التحقق..." : "📥 Checking...";
     if (qty === 0) return isArabic ? "⛔ غير متوفر" : "⛔ Out of Stock";
-    if (qty <= 5) return isArabic ? `⚠️ آخر ${qty}` : `⚠️ Last ${qty}`;
-    return isArabic ? `✅ متوفر (${qty})` : `✅ In Stock (${qty})`;
+    if (qty <= 5) return isArabic ? `⚠️ متبقي ${qty} سرية` : `⚠️ Last ${qty} series`;
+    return isArabic ? `✅ متاح (${qty} سرية)` : `✅ In Stock (${qty} series)`;
   };
 
   const getColorHex = (colorName: string) => {
@@ -177,34 +170,19 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
       وردي: "#ec4899",
       بنفسجي: "#8b5cf6",
       برتقالي: "#f97316",
-      اورنج: "#f97316",
       أسود: "#000000",
       اسود: "#000000",
       أبيض: "#ffffff",
       رمادي: "#6b7280",
-      بني: "#a16207",
-      ذهبي: "#f59e0b",
-      فضي: "#94a3b8",
-      كريم: "#fef3c7",
-      سكري: "#f0f9ff",
-      نيون: "#4ade80",
-      تركواز: "#06b6d4",
       كحلي: "#1e3a8a",
-      زيتي: "#3f6212",
       بيج: "#f5f5dc",
-      نبيتي: "#800000",
-      رصاصي: "#71717a",
-      سيمون: "#ff7f50",
-      موف: "#a855f7",
-      جنزاري: "#008b8b",
-      كشمير: "#e6a8d7",
-      هافان: "#cd7f32",
-      مسطردة: "#ffdb58",
-      لبني: "#87CEFA",
-      منت: "#98FF98",
+      كافيه: "#8B5A2B",
     };
     return colorMap[colorName] || "#6b7280";
   };
+
+  const piecePrice = product.price;
+  const seriaPrice = piecePrice * PIECES_PER_SERIA;
 
   return (
     <Link
@@ -220,7 +198,7 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className="relative aspect-[3/4] overflow-hidden bg-gray-100">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={mainImage}
           srcSet={imageSrcSet}
@@ -230,17 +208,20 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
           height="880"
           className="w-full h-full object-contain transition-transform duration-300 ease-in-out group-hover:scale-105"
           loading={priority ? "eager" : "lazy"}
-          fetchPriority={priority ? "high" : "auto"}
           decoding="async"
         />
 
+        <div className="absolute top-3 left-3 bg-indigo-900/80 backdrop-blur-sm text-white px-2.5 py-1 rounded-full text-[10px] font-black z-20">
+          جملة (سرايا)
+        </div>
+
         {isEmployee && (
           <div
-            className={`absolute top-3 left-3 px-3 py-1.5 rounded-full text-xs font-semibold border ${getQuantityColor(
-              availableQuantity
+            className={`absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-semibold border ${getQuantityColor(
+              availableSeries
             )} shadow-sm z-20`}
           >
-            {getQuantityText(availableQuantity)}
+            {getQuantityText(availableSeries)}
           </div>
         )}
 
@@ -270,13 +251,7 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-
                         setCurrentImageIndex(index);
-
-                        if (isEmployee) {
-                          const variantQty = variant.cur_qty || 0;
-                          setCurrentQuantity(variantQty);
-                        }
                       }}
                       className={`relative group/color transition-all duration-300 ${
                         currentImageIndex === index
@@ -294,32 +269,8 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
                           backgroundColor: getColorHex(variant.color),
                         }}
                       />
-
-                      {currentImageIndex === index && (
-                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm" />
-                      )}
-
-                      <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 opacity-0 group-hover/color:opacity-100 transition-opacity duration-200 pointer-events-none">
-                        <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded-md whitespace-nowrap">
-                          {t(variant.color)}
-                          {isEmployee && variant.cur_qty !== undefined && (
-                            <div className="text-xs opacity-75">
-                              {variant.cur_qty} {isArabic ? "قطعة" : "pcs"}
-                            </div>
-                          )}
-                          <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
-                        </div>
-                      </div>
                     </button>
                   ))}
-
-                  {product.variants.length > 5 && (
-                    <div className="flex items-center">
-                      <span className="text-xs text-gray-500 font-medium bg-gray-100 px-2 py-1 rounded-full">
-                        +{product.variants.length - 5}
-                      </span>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -327,89 +278,46 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
         )}
       </div>
 
-      <div className="p-4 flex-1 flex flex-col">
-        <div className="flex justify-between items-start mb-3">
-          <h3 className="text-sm font-semibold line-clamp-2 flex-1 pr-2 leading-tight" style={{ color: settings.fontColor }}>
-            {getProductName()}
-          </h3>
-          <div className="flex flex-col items-end">
-            <span className="text-lg font-bold whitespace-nowrap" style={{ color: settings.fontColor }}>
-              {product.price} {t("ج.م")}
+      <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+        <div>
+          <div className="flex justify-between items-start mb-2">
+            <h3
+              className="text-sm font-semibold line-clamp-2 flex-1 pr-2 leading-tight"
+              style={{ color: settings.fontColor }}
+            >
+              {getProductName()}
+            </h3>
+          </div>
+
+          <PromotionNotice
+            category={product.category}
+            product={product.description}
+            compact
+          />
+
+          <p className="text-[11px] text-gray-400 font-mono">
+            موديل: {product.master_code || product.modelId}
+          </p>
+        </div>
+
+        <div className="pt-2 border-t border-gray-100 flex justify-between items-end">
+          <div>
+            <span className="text-xs text-gray-400 block font-medium">سعر القطعة</span>
+            <span
+              className="text-lg font-bold whitespace-nowrap"
+              style={{ color: settings.fontColor }}
+            >
+              {piecePrice} {t("ج.م")}
+            </span>
+          </div>
+
+          <div className="text-left">
+            <span className="text-[10px] text-gray-400 block font-medium">السرية (4 قطع)</span>
+            <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+              {seriaPrice} {t("ج.م")}
             </span>
           </div>
         </div>
-
-        <PromotionNotice
-          category={product.category}
-          product={product.description}
-          compact
-        />
-
-        <div className="flex justify-between items-center text-xs mb-4">
-          <span className="truncate px-2 py-1 rounded-full" style={{ backgroundColor: `${settings.fontColor}10`, color: settings.fontColor }}>
-            {t(product.category)}
-          </span>
-          {product.variants.length > 0 && (
-            <div className="flex items-center space-x-1 space-x-reverse" style={{ color: settings.storeIconColor }}>
-              <svg
-                className="w-3 h-3"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"
-                />
-              </svg>
-              <span>{product.variants.length} {isArabic ? "لون" : "colors"}</span>
-            </div>
-          )}
-        </div>
-
-        {product.variants[0]?.sizes && product.variants[0].sizes.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-4">
-            {product.variants[0].sizes.slice(0, 4).map((size) => (
-              <span
-                key={size}
-                className="px-2.5 py-1 text-xs rounded-lg border font-medium"
-                style={{
-                  backgroundColor: `${settings.fontColor}10`,
-                  borderColor: `${settings.fontColor}30`,
-                  color: settings.fontColor,
-                }}
-              >
-                {size}
-              </span>
-            ))}
-            {product.variants[0].sizes.length > 4 && (
-              <span className="px-2.5 py-1 text-xs rounded-lg font-medium" style={{ backgroundColor: `${settings.fontColor}08`, color: settings.fontColor }}>
-                +{product.variants[0].sizes.length - 4}
-              </span>
-            )}
-          </div>
-        )}
-
-        {isEmployee && availableQuantity !== null && (
-          <div className="mt-2 mb-3">
-            <div
-              className={`text-xs px-3 py-2 rounded-lg ${getQuantityColor(
-                availableQuantity
-              )}`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-medium">{isArabic ? "المخزن:" : "Stock:"}</span>
-                <span>
-                  {availableQuantity === 0
-                    ? (isArabic ? "غير متوفر" : "Out of Stock")
-                    : (isArabic ? `${availableQuantity} قطعة` : `${availableQuantity} pcs`)}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
 
         <button
           type="button"
@@ -417,28 +325,10 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
             event.stopPropagation();
             router.push(`/product/${product.modelId}`);
           }}
-          className="mt-auto w-full py-3 px-4 rounded-xl text-sm font-semibold transition-all duration-300 flex items-center justify-center space-x-2 space-x-reverse shadow-md hover:shadow-lg transform hover:translate-y-[-1px] active:translate-y-0 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white"
+          className="mt-auto w-full py-2.5 px-4 rounded-xl text-xs font-semibold transition-all duration-300 flex items-center justify-center space-x-2 space-x-reverse shadow-md bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white"
         >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-            />
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-            />
-          </svg>
-          <span>{t("عرض التفاصيل")}</span>
+          <span>📦</span>
+          <span>{t("عرض التفاصيل والطلب")}</span>
         </button>
       </div>
     </Link>

@@ -8,18 +8,21 @@ import React, {
   ReactNode,
 } from "react";
 
-interface CartItem {
-  id: string; // ✅ سيصبح ID فريد (modelId + color + size)
+const PIECES_PER_SERIA = 4; // معامل التحويل: كل سرية = 4 قطع
+
+export interface CartItem {
+  id: string; // فريد: modelId-color
   name: string;
-  price: number;
+  price: number; // سعر القطعة الواحدة
   color: string;
-  size: string;
-  quantity: number;
+  size: string; // محتفظ بها كـ ONE SIZE للتوافق
+  seriesQuantity: number; // عدد السريات المطلوبة
+  quantity: number; // إجمالي عدد القطع (seriesQuantity * 4)
   image: string;
   item_code?: string;
   master_code?: string;
   category?: string;
-  modelId?: string; // ✅ حفظ modelId الأصلي
+  modelId?: string;
   maxQuantity?: number;
 }
 
@@ -38,6 +41,8 @@ interface Product {
     imageUrl: string;
     sizes: string[];
     itemCode?: string;
+    cur_qty?: number;
+    stor_id?: number;
     sizeItemCodes?: { [size: string]: string };
     sizePrices?: { [size: string]: number };
   }>;
@@ -52,21 +57,23 @@ interface CartContextType {
   addToCart: (
     product: Product,
     color: string,
-    size: string,
-    quantity?: number,
+    size?: string,
+    quantity?: number, // عدد السريات
     price?: number
   ) => void;
-  removeFromCart: (id: string) => void; // ✅ تغيير: نستخدم ID الفريد فقط
-  updateQuantity: (id: string, quantity: number) => void; // ✅ نستخدم ID الفريد
+  removeFromCart: (id: string) => void;
+  updateQuantity: (id: string, quantity: number) => void; // تحديث عدد السريات
   clearCart: () => void;
-  getCartItemsCount: () => number;
+  getCartItemsCount: () => number; // عدد السريات
+  getCartPiecesCount: () => number; // عدد القطع التام
   getCartTotal: () => number;
-  isProductInCart: (productId: string, color: string, size: string) => boolean;
+  isProductInCart: (productId: string, color: string, size?: string) => boolean;
   getProductQuantity: (
     productId: string,
     color: string,
-    size: string
+    size?: string
   ) => number;
+  PIECES_PER_SERIA: number;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -74,7 +81,6 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 export function CartProvider({ children }: { children: ReactNode }) {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
-  // ✅ تحميل السلة من localStorage عند التحميل
   useEffect(() => {
     const savedCart = localStorage.getItem("cart");
     if (savedCart) {
@@ -86,192 +92,140 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // ✅ حفظ السلة في localStorage عند كل تغيير
   useEffect(() => {
     localStorage.setItem("cart", JSON.stringify(cartItems));
   }, [cartItems]);
 
-  // ✅ توليد ID فريد للمنتج في السلة
-  const generateCartItemId = (modelId: string, color: string, size: string): string => {
+  const generateCartItemId = (modelId: string, color: string): string => {
     const safeColor = color || "NO-COLOR";
-    const safeSize = size || "NO-SIZE";
-    return `${modelId}-${safeColor}-${safeSize}`;
+    return `${modelId}-${safeColor}`;
   };
 
-  // ✅ إضافة منتج إلى السلة - محدث
   const addToCart = (
     product: Product,
     color: string,
-    size: string,
-    quantity: number = 1,
+    _size?: string,
+    seriesQty: number = 1,
     selectedPrice?: number
-  ) => {
+  ) =>  {
     setCartItems((prevItems) => {
-      const itemId = generateCartItemId(product.modelId, color, size);
-      
-      const existingItemIndex = prevItems.findIndex(
-        (item) => item.id === itemId
-      );
+      const itemId = generateCartItemId(product.modelId, color);
+      const existingItemIndex = prevItems.findIndex((item) => item.id === itemId);
+
+      const finalPiecePrice =
+        typeof selectedPrice === "number" && Number.isFinite(selectedPrice)
+          ? selectedPrice
+          : product.price;
 
       if (existingItemIndex > -1) {
-        // ✅ المنتج موجود بالفعل - تحديث الكمية
         const updatedItems = [...prevItems];
         const existingItem = updatedItems[existingItemIndex];
 
-        // ✅ للموظفين: لا تتجاوز الكمية المتاحة
-        const newQuantity = existingItem.maxQuantity
-          ? Math.min(existingItem.quantity + quantity, existingItem.maxQuantity)
-          : existingItem.quantity + quantity;
+        const newSeriesQty = existingItem.maxQuantity
+          ? Math.min(existingItem.seriesQuantity + seriesQty, existingItem.maxQuantity)
+          : existingItem.seriesQuantity + seriesQty;
 
         updatedItems[existingItemIndex] = {
           ...existingItem,
-          quantity: newQuantity,
-          price: typeof selectedPrice === "number" && Number.isFinite(selectedPrice)
-            ? selectedPrice
-            : existingItem.price,
+          seriesQuantity: newSeriesQty,
+          quantity: newSeriesQty * PIECES_PER_SERIA,
+          price: finalPiecePrice,
         };
-
-        console.log("🛒 تحديث كمية المنتج:", {
-          name: existingItem.name,
-          color: existingItem.color,
-          size: existingItem.size,
-          quantity: newQuantity,
-          itemId: itemId
-        });
 
         return updatedItems;
       } else {
-        // ✅ الحصول على item_code الصحيح بناءً على اللون والمقاس
-        const selectedVariant = product.variants?.find(v => v.color === color);
-        let correctItemCode = product.item_code;
-        
-        if (selectedVariant?.sizeItemCodes && selectedVariant.sizeItemCodes[size]) {
-          correctItemCode = selectedVariant.sizeItemCodes[size];
-        } 
-        else if (selectedVariant?.itemCode) {
-          correctItemCode = selectedVariant.itemCode;
-        }
+        const selectedVariant = product.variants?.find((v) => v.color === color);
+        const correctItemCode =
+          selectedVariant?.itemCode || product.item_code || product.master_code;
 
-        // ✅ منتج جديد - إضافته إلى السلة
+        const maxSeries =
+          product.cur_qty && product.stor_id === 0
+            ? Math.floor(product.cur_qty / PIECES_PER_SERIA)
+            : undefined;
+
         const newItem: CartItem = {
-          id: itemId, // ✅ استخدام ID فريد
+          id: itemId,
           name: product.item_name || product.description,
-          price:
-            typeof selectedPrice === "number" && Number.isFinite(selectedPrice)
-              ? selectedPrice
-              : product.price,
+          price: finalPiecePrice,
           color: color || "افتراضي",
-          size: size || "ONE SIZE",
-          quantity: quantity,
-          image: selectedVariant?.imageUrl || product.variants[0]?.imageUrl || "/placeholder-product.jpg",
+          size: "ONE SIZE",
+          seriesQuantity: seriesQty,
+          quantity: seriesQty * PIECES_PER_SERIA,
+          image:
+            selectedVariant?.imageUrl ||
+            product.variants?.[0]?.imageUrl ||
+            "/placeholder-product.jpg",
           item_code: correctItemCode,
           master_code: product.master_code,
           category: product.category || product.group_name || product.kind_name || "",
-          modelId: product.modelId, // ✅ حفظ modelId الأصلي
-          // ✅ حفظ أقصى كمية للموظفين
-          maxQuantity:
-            product.cur_qty && product.stor_id === 0
-              ? product.cur_qty
-              : undefined,
+          modelId: product.modelId,
+          maxQuantity: maxSeries,
         };
-
-        console.log("🛒 إضافة منتج جديد للسلة:", {
-          name: newItem.name,
-          id: newItem.id,
-          color: newItem.color,
-          size: newItem.size,
-          item_code: newItem.item_code,
-          master_code: newItem.master_code
-        });
 
         return [...prevItems, newItem];
       }
     });
   };
 
-  // ✅ إزالة منتج من السلة - محدث
   const removeFromCart = (id: string) => {
-    console.log("🗑️ محاولة إزالة منتج:", id);
-    
-    setCartItems((prevItems) => {
-      const filteredItems = prevItems.filter(item => item.id !== id);
-      
-      console.log("🔄 قبل الإزالة:", prevItems.length, "بعد الإزالة:", filteredItems.length);
-      return filteredItems;
-    });
+    setCartItems((prevItems) => prevItems.filter((item) => item.id !== id));
   };
 
-  // ✅ تحديث كمية منتج في السلة - محدث
-  const updateQuantity = (id: string, quantity: number) => {
-    console.log("🔄 تحديث كمية المنتج:", { id, quantity });
-    
-    if (quantity <= 0) {
-      // ✅ إزالة المنتج إذا كانت الكمية صفر أو أقل
+  const updateQuantity = (id: string, seriesQty: number) => {
+    if (seriesQty <= 0) {
       removeFromCart(id);
       return;
     }
 
     setCartItems((prevItems) => {
-      const updatedItems = prevItems.map((item) => {
+      return prevItems.map((item) => {
         if (item.id === id) {
-          // ✅ للموظفين: لا تسمح بتجاوز الكمية المتاحة
-          const finalQuantity = item.maxQuantity
-            ? Math.min(quantity, item.maxQuantity)
-            : quantity;
+          const finalSeriesQty = item.maxQuantity
+            ? Math.min(seriesQty, item.maxQuantity)
+            : seriesQty;
 
-          console.log(`📦 تحديث كمية ${item.name} من ${item.quantity} إلى ${finalQuantity}`);
-          
-          return { ...item, quantity: finalQuantity };
+          return {
+            ...item,
+            seriesQuantity: finalSeriesQty,
+            quantity: finalSeriesQty * PIECES_PER_SERIA,
+          };
         }
         return item;
       });
-
-      return updatedItems;
     });
   };
 
-  // ✅ تفريغ السلة
   const clearCart = () => {
     setCartItems([]);
-    console.log("🧹 تم تفريغ السلة");
   };
 
-  // ✅ حساب العدد الإجمالي للمنتجات في السلة
+  // إجمالي السريات في السلة
   const getCartItemsCount = () => {
-    const count = cartItems.reduce((total, item) => total + item.quantity, 0);
-    console.log("📊 عدد المنتجات في السلة:", count);
-    return count;
+    return cartItems.reduce((total, item) => total + (item.seriesQuantity || 1), 0);
   };
 
-  // ✅ حساب المجموع الكلي للسلة
+  // إجمالي القطع في السلة
+  const getCartPiecesCount = () => {
+    return cartItems.reduce((total, item) => total + item.quantity, 0);
+  };
+
+  // إجمالي الحساب = عدد القطع الإجمالي * سعر القطعة
   const getCartTotal = () => {
-    const total = cartItems.reduce(
+    return cartItems.reduce(
       (total, item) => total + item.price * item.quantity,
       0
     );
-    console.log("💰 المجموع الكلي للسلة:", total);
-    return total;
   };
 
-  // ✅ التحقق إذا كان المنتج موجود في السلة
-  const isProductInCart = (productId: string, color: string, size: string) => {
-    const itemId = generateCartItemId(productId, color, size);
-    const exists = cartItems.some(item => item.id === itemId);
-    console.log(`🔍 التحقق من وجود المنتج ${productId}: ${exists ? 'موجود' : 'غير موجود'}`);
-    return exists;
+  const isProductInCart = (productId: string, color: string) => {
+    const itemId = generateCartItemId(productId, color);
+    return cartItems.some((item) => item.id === itemId);
   };
 
-  // ✅ الحصول على كمية منتج معين في السلة
-  const getProductQuantity = (
-    productId: string,
-    color: string,
-    size: string
-  ) => {
-    const itemId = generateCartItemId(productId, color, size);
-    const item = cartItems.find(item => item.id === itemId);
-    const quantity = item ? item.quantity : 0;
-    console.log(`📦 كمية المنتج ${productId}: ${quantity}`);
-    return quantity;
+  const getProductQuantity = (productId: string, color: string) => {
+    const itemId = generateCartItemId(productId, color);
+    const item = cartItems.find((i) => i.id === itemId);
+    return item ? item.seriesQuantity : 0;
   };
 
   const value: CartContextType = {
@@ -281,9 +235,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
     updateQuantity,
     clearCart,
     getCartItemsCount,
+    getCartPiecesCount,
     getCartTotal,
     isProductInCart,
     getProductQuantity,
+    PIECES_PER_SERIA,
   };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
