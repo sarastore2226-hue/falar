@@ -6,7 +6,71 @@ export const dynamic = "force-dynamic";
 
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "https://images.vooy.shop";
 
-// 1️⃣ GET - جلب تفاصيل الموديل وكافة ألوانه ومقاساته
+interface VariantDetail {
+  id: string;
+  color: string;
+  imageUrl: string;
+  material: string;
+  itemCode: string;
+  sizes: string[];
+  sizePrices: Record<string, number>;
+  sizeQuantities: Record<string, number>;
+  sizeItemCodes: Record<string, string>;
+  cur_qty: number;
+  totalColorQuantity: number;
+  stor_id: number;
+  material_code?: string | null;
+  sizeDetails: Array<{
+    uniqueId: string;
+    itemCode: string;
+    size: string;
+    price: number;
+    quantity: number;
+  }>;
+}
+
+interface ProductDetailResponse {
+  id: string;
+  modelId: string;
+  master_code: string;
+  price: number;
+  category: string;
+  group_name: string;
+  kind_name: string;
+  description: string;
+  item_name: string;
+  item_code: string;
+  image: string;
+  cur_qty: number;
+  variants: VariantDetail[];
+}
+
+interface UpdateVariantInput {
+  uniqueId?: string;
+  id?: string;
+  color?: string;
+  out_price?: number | string;
+  price?: number | string;
+  cur_qty?: number | string;
+  quantity?: number | string;
+  itemCode?: string;
+}
+
+interface UpdateProductInput {
+  master_code?: string;
+  item_name?: string;
+  description?: string;
+  group_name?: string;
+  kind_name?: string;
+  color?: string;
+  out_price?: number | string;
+  cur_qty?: number | string;
+  images?: string;
+  image?: string;
+  variants?: UpdateVariantInput[];
+}
+
+// 1️⃣ GET
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -18,12 +82,13 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const employeeView = searchParams.get("employee") === "true";
 
-    console.log(`🔍 جلب تفاصيل المنتج ID: ${decodedId}`);
-
-    // البحث عن الموديل بالـ ID أو بكود الموديل modelNo
     const targetProduct = await prisma.product.findFirst({
       where: {
-        OR: [{ id: decodedId }, { modelNo: decodedId }],
+        OR: [
+          { id: decodedId },
+          { modelNo: decodedId },
+          { material: decodedId },
+        ],
       },
       select: { modelNo: true },
     });
@@ -36,7 +101,10 @@ export async function GET(
     }
 
     const modelNo = targetProduct.modelNo;
-    const whereConditions: any = { modelNo };
+    const whereConditions: {
+      modelNo: string;
+      OR?: Array<{ status: string } | { currentStock: { gt: number } }>;
+    } = { modelNo };
 
     if (!employeeView) {
       whereConditions.OR = [{ status: "OPEN" }, { currentStock: { gt: 0 } }];
@@ -57,7 +125,7 @@ export async function GET(
     const mainInfo = allVariants[0];
     const totalQty = allVariants.reduce((sum, v) => sum + v.currentStock, 0);
 
-    const product = {
+    const product: ProductDetailResponse = {
       id: mainInfo.id,
       modelId: mainInfo.modelNo,
       master_code: mainInfo.modelNo,
@@ -67,67 +135,70 @@ export async function GET(
       kind_name: mainInfo.kind_name || "",
       description: mainInfo.description || `موديل ${mainInfo.modelNo}`,
       item_name: mainInfo.description || `موديل ${mainInfo.modelNo}`,
-      item_code: `${mainInfo.modelNo}-${mainInfo.color}`,
+      item_code: mainInfo.material || `${mainInfo.modelNo}${mainInfo.color}`,
       image: mainInfo.image
-        ? normalizePublicImageUrl(mainInfo.image)
+        ? normalizePublicImageUrl(mainInfo.image) || ""
         : `${R2_PUBLIC_URL}/${mainInfo.modelNo}-${mainInfo.color}.webp`,
       cur_qty: totalQty,
-      variants: [] as any[],
+      variants: [],
     };
 
-    const variantsMap: { [color: string]: any } = {};
+    const variantsMap = new Map<string, VariantDetail>();
 
     allVariants.forEach((row) => {
       const color = row.color || "افتراضي";
       const curQty = Number(row.currentStock) || 0;
+      const compositeKey = row.material || `${row.modelNo}${color}`;
       const fallbackImage = `${R2_PUBLIC_URL}/${row.modelNo}-${color}.webp`;
       const imageUrl = row.image
-        ? normalizePublicImageUrl(row.image)
+        ? normalizePublicImageUrl(row.image) || fallbackImage
         : fallbackImage;
 
-      if (!variantsMap[color]) {
-        variantsMap[color] = {
+      if (!variantsMap.has(color)) {
+        variantsMap.set(color, {
           id: row.id,
-          color: color,
-          imageUrl: imageUrl,
-          itemCode: `${row.modelNo}-${color}`,
+          color,
+          imageUrl,
+          material: compositeKey,
+          itemCode: compositeKey,
           sizes: ["ONE SIZE"],
           sizePrices: { "ONE SIZE": Number(row.price) || 0 },
           sizeQuantities: { "ONE SIZE": curQty },
-          sizeItemCodes: { "ONE SIZE": `${row.modelNo}-${color}` },
+          sizeItemCodes: { "ONE SIZE": compositeKey },
           cur_qty: curQty,
           totalColorQuantity: curQty,
           stor_id: 0,
-          material: row.material,
+          material_code: row.material,
           sizeDetails: [
             {
               uniqueId: row.id,
-              itemCode: `${row.modelNo}-${color}`,
+              itemCode: compositeKey,
               size: "ONE SIZE",
               price: Number(row.price) || 0,
               quantity: curQty,
             },
           ],
-        };
+        });
       } else {
-        variantsMap[color].cur_qty += curQty;
-        variantsMap[color].totalColorQuantity += curQty;
+        const existing = variantsMap.get(color)!;
+        existing.cur_qty += curQty;
+        existing.totalColorQuantity += curQty;
       }
     });
 
-    product.variants = Object.values(variantsMap);
+    product.variants = Array.from(variantsMap.values());
 
     return NextResponse.json({ success: true, product });
-  } catch (error: any) {
-    console.error("❌ Error in single product API:", error);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : "خطأ غير معروف";
     return NextResponse.json(
-      { success: false, error: "خطأ في السيرفر: " + error.message },
+      { success: false, error: "خطأ في السيرفر: " + errorMsg },
       { status: 500 }
     );
   }
 }
 
-// 2️⃣ PUT - تحديث الموديل وكافة نسخه وألوانه وأسعاره من الداشبورد
+// 2️⃣ PUT
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -135,7 +206,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const decodedId = decodeURIComponent(id).trim();
-    const body = await request.json();
+    const body = (await request.json()) as UpdateProductInput;
 
     const targetModelNo = body.master_code || decodedId;
 
@@ -150,16 +221,18 @@ export async function PUT(
     });
 
     if (allVariants.length === 0) {
-      return NextResponse.json(
-        { success: false, error: "المنتج غير موجود" },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: "المنتج غير موجود" }, { status: 404 });
     }
 
     const activeModelNo = allVariants[0].modelNo;
 
-    // تحديث البيانات المشتركة
-    const sharedData: any = {};
+    const sharedData: {
+      description?: string;
+      group_name?: string;
+      kind_name?: string;
+      modelNo?: string;
+    } = {};
+
     if (body.item_name || body.description) {
       sharedData.description = body.item_name || body.description;
     }
@@ -176,7 +249,6 @@ export async function PUT(
       });
     }
 
-    // تحديث النسخ الفردية إذا أُرسلت كـ variants
     if (Array.isArray(body.variants) && body.variants.length > 0) {
       for (const variant of body.variants) {
         if (!variant.uniqueId && !variant.id) continue;
@@ -184,35 +256,35 @@ export async function PUT(
         const price = Number(variant.out_price ?? variant.price);
         const quantity = Number(variant.cur_qty ?? variant.quantity);
 
-        if (!variant.color?.trim()) {
-          throw new Error("اللون مطلوب لكل نسخة");
-        }
-        if (!Number.isFinite(price) || price < 0 || !Number.isInteger(quantity) || quantity < 0) {
-          throw new Error("السعر أو الكمية غير صالحة للنسخة " + variant.color);
-        }
-
         await prisma.product.update({
           where: { id: targetId },
           data: {
-            color: variant.color.trim(),
-            price: price,
-            currentStock: quantity,
-            stockQty: quantity,
+            color: variant.color ? variant.color.trim() : undefined,
+            price: Number.isFinite(price) ? price : undefined,
+            currentStock: Number.isInteger(quantity) ? quantity : undefined,
+            stockQty: Number.isInteger(quantity) ? quantity : undefined,
+            material: variant.itemCode || undefined,
           },
         });
       }
     } else {
-      // تحديث نسخة مفردة إذا لم تُرسل مصفوفة
       const targetVariant =
         allVariants.find((v) => body.color && v.color === body.color) ||
         allVariants[0];
 
       if (targetVariant) {
-        const updateData: any = {};
+        const updateData: {
+          color?: string;
+          price?: number;
+          currentStock?: number;
+          stockQty?: number;
+          image?: string;
+        } = {};
+
         if (body.color) updateData.color = body.color.trim();
-        if (body.out_price !== undefined) updateData.price = parseFloat(body.out_price) || 0;
+        if (body.out_price !== undefined) updateData.price = parseFloat(String(body.out_price)) || 0;
         if (body.cur_qty !== undefined) {
-          const qty = parseInt(body.cur_qty) || 0;
+          const qty = parseInt(String(body.cur_qty), 10) || 0;
           updateData.currentStock = qty;
           updateData.stockQty = qty;
         }
@@ -228,16 +300,16 @@ export async function PUT(
     }
 
     return NextResponse.json({ success: true, message: "تم تحديث المنتج بنجاح" });
-  } catch (error: any) {
-    console.error("❌ Error updating product:", error);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : "فشل في تحديث المنتج";
     return NextResponse.json(
-      { success: false, error: error.message || "فشل في تحديث المنتج" },
+      { success: false, error: errorMsg },
       { status: 500 }
     );
   }
 }
 
-// 3️⃣ DELETE - حذف الموديل وجميع نسخه
+// 3️⃣ DELETE
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -260,10 +332,7 @@ export async function DELETE(
     });
 
     if (result.count === 0) {
-      return NextResponse.json(
-        { success: false, error: "المنتج غير موجود" },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: "المنتج غير موجود" }, { status: 404 });
     }
 
     return NextResponse.json({
@@ -271,19 +340,10 @@ export async function DELETE(
       message: "تم حذف الموديل وجميع نسخه بنجاح",
       deletedCount: result.count,
     });
-  } catch (error: any) {
-    console.error("❌ Error deleting product:", error);
-    if (error.code === "P2003") {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "لا يمكن حذف هذا الصنف لوجود طلبات أو فواتير سابقة مرتبطة به في المعرض.",
-        },
-        { status: 400 }
-      );
-    }
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : "فشل في حذف المنتج";
     return NextResponse.json(
-      { success: false, error: error.message || "فشل في حذف المنتج" },
+      { success: false, error: errorMsg },
       { status: 500 }
     );
   }

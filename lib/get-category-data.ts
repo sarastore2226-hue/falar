@@ -2,14 +2,37 @@ import { PrismaClient } from "@prisma/client";
 import { normalizePublicImageUrl } from "./utils";
 
 const prisma = new PrismaClient();
-
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "https://images.vooy.shop";
+
+interface CategoryVariant {
+  id: string;
+  color: string;
+  imageUrl: string;
+  material: string;
+  itemCode: string;
+  cur_qty: number;
+  totalColorQuantity: number;
+  sizes: string[];
+}
+
+interface CategoryGroupedProduct {
+  modelId: string;
+  master_code: string;
+  price: number;
+  category: string;
+  group_name: string;
+  kind_name: string;
+  description: string;
+  item_name: string;
+  cur_qty: number;
+  variants: CategoryVariant[];
+}
 
 export async function getCategoryData(categoryId: string) {
   try {
-    const id = parseInt(categoryId);
+    const id = parseInt(categoryId, 10);
 
-    // 1. جلب كل التصنيفات لتحديد التصنيف الحالي والفرعي
+    // 1. جلب التصنيفات لتحديد التصنيف الحالي والفروع
     const categories = await prisma.categories.findMany({
       select: {
         id: true,
@@ -20,7 +43,6 @@ export async function getCategoryData(categoryId: string) {
       },
     });
 
-    // البحث عن التصنيف الحالي
     const currentCategory = categories.find((cat) => cat.id === id);
 
     if (!currentCategory) {
@@ -32,7 +54,6 @@ export async function getCategoryData(categoryId: string) {
       };
     }
 
-    // جلب التصنيفات الفرعية التابعة لهذا التصنيف (مثلاً: بناتي -> فساتين، أطقم...)
     const normalizedCategories = categories.map((category) => ({
       ...category,
       image: normalizePublicImageUrl(category.image),
@@ -46,8 +67,7 @@ export async function getCategoryData(categoryId: string) {
       (cat) => cat.sub === currentCategory.name && cat.image
     );
 
-    // 2. جلب المنتجات من جدول Product المعتمد (المعرض)
-    // نبحث عن اسم التصنيف في الجروب أو النوع أو الخامة أو الوصف
+    // 2. البحث في جدول Product الموحد بناءً على اسم التصنيف
     const productsRaw = await prisma.product.findMany({
       where: {
         OR: [
@@ -57,149 +77,75 @@ export async function getCategoryData(categoryId: string) {
         AND: [
           {
             OR: [
-              {
-                group_name: { contains: currentCategory.name, mode: "insensitive" },
-              },
-              {
-                kind_name: { contains: currentCategory.name, mode: "insensitive" },
-              },
-              {
-                material: { contains: currentCategory.name, mode: "insensitive" },
-              },
-              {
-                description: { contains: currentCategory.name, mode: "insensitive" },
-              },
-              {
-                modelNo: { contains: currentCategory.name, mode: "insensitive" },
-              },
+              { group_name: { contains: currentCategory.name, mode: "insensitive" } },
+              { kind_name: { contains: currentCategory.name, mode: "insensitive" } },
+              { description: { contains: currentCategory.name, mode: "insensitive" } },
+              { material: { contains: currentCategory.name, mode: "insensitive" } },
             ],
           },
         ],
       },
-      select: {
-        id: true,
-        modelNo: true,
-        description: true,
-        material: true,
-        color: true,
-        stockQty: true,
-        currentStock: true,
-        price: true,
-        group_name: true,
-        kind_name: true,
-        image: true,
-      },
-      orderBy: { id: "desc" }, // ترتيب بالأحدث
+      orderBy: { id: "desc" },
     });
 
-    console.log(
-      `📦 تم جلب ${productsRaw.length} سجل لتصنيف: ${currentCategory.name}`
-    );
-
-    // 3. تجميع المنتجات (نفس منطقك الأصلي الممتاز لتجميع الألوان والمقاسات)
-    const groupedByMasterCode: { [key: string]: any } = {};
+    // 3. تجميع الألوان التابعة لكل موديل
+    const groupedByMasterCode = new Map<string, CategoryGroupedProduct>();
 
     productsRaw.forEach((row) => {
-      const masterCode = row.modelNo;
-      if (!masterCode) return;
-
-      const color = row.color || "افتراضي";
-      const size = "ONE SIZE"; // المقاس الافتراضي لبيع الجملة
+      const modelId = row.modelNo.trim();
+      const color = row.color.trim() || "افتراضي";
       const curQty = Number(row.currentStock) || 0;
-      const itemCode = `${row.modelNo}-${color}`;
+      const compositeKey = row.material || `${modelId}${color}`;
 
-      if (!groupedByMasterCode[masterCode]) {
-        groupedByMasterCode[masterCode] = {
-          modelId: masterCode,
-          master_code: masterCode,
+      if (!groupedByMasterCode.has(modelId)) {
+        groupedByMasterCode.set(modelId, {
+          modelId,
+          master_code: modelId,
           price: row.price || 0,
-          // نجمع الأسماء لضمان دقة الفلترة لاحقاً
-          category: row.group_name || row.kind_name || row.material || "",
-          description: row.description || row.kind_name || `موديل ${masterCode}`,
+          category: row.group_name || row.kind_name || row.material || currentCategory.name,
           group_name: row.group_name || "",
           kind_name: row.kind_name || "",
-          item_name: row.description || `موديل ${masterCode}`,
-          item_code: itemCode,
+          description: row.description || `موديل ${modelId}`,
+          item_name: row.description || `موديل ${modelId}`,
           cur_qty: 0,
           variants: [],
-        };
+        });
       }
 
-      let variant = groupedByMasterCode[masterCode].variants.find(
-        (v: any) => v.color === color
-      );
+      const item = groupedByMasterCode.get(modelId)!;
+      let variant = item.variants.find((v) => v.color === color);
+
+      // استخدام const وتجنب let لإرضاء prefer-const
+      const fallbackUrl = `${R2_PUBLIC_URL}/${modelId}-${color}.webp`;
+      const imageUrl = row.image
+        ? normalizePublicImageUrl(row.image) || fallbackUrl
+        : fallbackUrl;
 
       if (!variant) {
-        // معالجة الصورة بشكل آمن
-        let imageUrl =
-          "https://via.placeholder.com/500x700/EFEFEF/666666?text=No+Image";
-
-        if (row.image && row.image.trim().length > 10 && row.image !== "null") {
-          imageUrl = normalizePublicImageUrl(row.image.trim()) || imageUrl;
-        } else {
-          // جلب الصورة التلقائية من مسار R2 باسم (كود الموديل - اللون)
-          imageUrl = `${R2_PUBLIC_URL}/${masterCode}-${color}.webp`;
-        }
-
         variant = {
           id: row.id,
-          color: color,
-          imageUrl: imageUrl,
-          itemCode: itemCode,
-          material: row.material || "",
-          sizes: [],
+          color,
+          imageUrl,
+          material: compositeKey,
+          itemCode: compositeKey,
           cur_qty: curQty,
-          sizeQuantities: {},
+          totalColorQuantity: curQty,
+          sizes: ["ONE SIZE"],
         };
-        groupedByMasterCode[masterCode].variants.push(variant);
+        item.variants.push(variant);
       } else {
         variant.cur_qty += curQty;
+        variant.totalColorQuantity += curQty;
       }
 
-      groupedByMasterCode[masterCode].cur_qty += curQty;
-
-      if (size) {
-        if (!variant.sizes.includes(size)) {
-          variant.sizes.push(size);
-        }
-        variant.sizeQuantities = variant.sizeQuantities || {};
-        variant.sizeQuantities[size] =
-          (variant.sizeQuantities[size] || 0) + curQty;
-      }
+      item.cur_qty += curQty;
     });
 
-    const finalProducts = Object.values(groupedByMasterCode);
+    const finalProducts = Array.from(groupedByMasterCode.values());
 
-    // 4. فلترة نهائية (احتياطية صارمة) للتأكد من أن المنتج يخص التصنيف فعلاً
-    // هذه الخطوة تضمن عدم دخول منتجات بالخطأ إذا كان استعلام قاعدة البيانات واسعاً
-    const filteredProducts = finalProducts.filter((p) => {
-      const searchText = currentCategory.name.toLowerCase().trim();
-      const groupName = (p.group_name || "").toLowerCase();
-      const kindName = (p.kind_name || "").toLowerCase();
-      const itemName = (p.item_name || "").toLowerCase();
-      const material = (p.material || "").toLowerCase();
-      const description = (p.description || "").toLowerCase();
-      const modelNo = (p.master_code || "").toLowerCase();
-
-      // يجب أن يحتوي أحد الحقول على اسم التصنيف
-      return (
-        groupName.includes(searchText) ||
-        kindName.includes(searchText) ||
-        itemName.includes(searchText) ||
-        material.includes(searchText) ||
-        description.includes(searchText) ||
-        modelNo.includes(searchText)
-      );
-    });
-
-    console.log(
-      `🎯 العدد النهائي للموديلات في ${currentCategory.name}: ${filteredProducts.length}`
-    );
-
-    // إرجاع البيانات بنفس الهيكل المطلوب بالضبط
     return JSON.parse(
       JSON.stringify({
-        products: filteredProducts,
+        products: finalProducts,
         categories: normalizedCategories,
         currentCategory: normalizedCurrentCategory,
         subCategories,

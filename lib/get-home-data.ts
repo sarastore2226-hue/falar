@@ -2,12 +2,35 @@ import { PrismaClient } from "@prisma/client";
 import { normalizePublicImageUrl } from "./utils";
 
 const prisma = new PrismaClient();
-
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "https://images.vooy.shop";
+
+interface HomeVariant {
+  id: string;
+  color: string;
+  imageUrl: string;
+  material: string;
+  itemCode: string;
+  cur_qty: number;
+  totalColorQuantity: number;
+  sizes: string[];
+}
+
+interface HomeGroupedProduct {
+  modelId: string;
+  master_code: string;
+  price: number;
+  category: string;
+  group_name: string;
+  kind_name: string;
+  description: string;
+  item_name: string;
+  cur_qty: number;
+  variants: HomeVariant[];
+}
 
 export async function getHomeData() {
   try {
-    // 1. جلب المنتجات من جدول Product المعتمد (المعرض)
+    // 1. جلب المنتجات المتاحة من جدول Product الأساسي
     const productsRaw = await prisma.product.findMany({
       where: {
         OR: [
@@ -15,96 +38,78 @@ export async function getHomeData() {
           { currentStock: { gt: 0 } },
         ],
       },
-      orderBy: { id: "desc" }, // الأحدث
-      take: 200, // نجلب 200 لتكفي الصفحة الرئيسية
+      orderBy: { id: "desc" },
+      take: 250,
     });
 
-    const categories = await prisma.categories.findMany();
+    const categories = await prisma.categories.findMany({
+      orderBy: { id: "asc" },
+    });
 
-    // 2. تجميع المنتجات (نفس منطق الـ API الأصلي بالكامل)
-    const groupedByMasterCode: { [key: string]: any } = {};
+    // 2. تجميع النسخ والألوان لكل موديل باستخدام Map بأنواع دقيقة
+    const groupedByMasterCode = new Map<string, HomeGroupedProduct>();
 
     productsRaw.forEach((row) => {
-      const masterCode = row.modelNo;
-      if (!masterCode) return;
-
-      const color = row.color || "افتراضي";
-      const size = "ONE SIZE"; // المقاس الافتراضي للجملة
+      const modelId = row.modelNo.trim();
+      const color = row.color.trim() || "افتراضي";
       const curQty = Number(row.currentStock) || 0;
-      const itemCode = `${row.modelNo}-${color}`;
+      const compositeKey = row.material || `${modelId}${color}`;
 
-      if (!groupedByMasterCode[masterCode]) {
-        groupedByMasterCode[masterCode] = {
-          modelId: masterCode,
-          master_code: masterCode,
+      if (!groupedByMasterCode.has(modelId)) {
+        groupedByMasterCode.set(modelId, {
+          modelId,
+          master_code: modelId,
           price: row.price || 0,
-          category: row.group_name || row.kind_name || row.material || "",
-          description: row.description || row.kind_name || "منتج بدون وصف",
+          category: row.group_name || row.kind_name || row.material || "عام",
           group_name: row.group_name || "",
           kind_name: row.kind_name || "",
-          item_name: row.description || "",
-          item_code: itemCode,
+          description: row.description || `موديل ${modelId}`,
+          item_name: row.description || `موديل ${modelId}`,
           cur_qty: 0,
           variants: [],
-        };
+        });
       }
 
-      let variant = groupedByMasterCode[masterCode].variants.find(
-        (v: any) => v.color === color
-      );
+      const item = groupedByMasterCode.get(modelId)!;
+      const variant = item.variants.find((v) => v.color === color);
+
+      const fallbackUrl = `${R2_PUBLIC_URL}/${modelId}-${color}.webp`;
+      const imageUrl = row.image
+        ? normalizePublicImageUrl(row.image) || fallbackUrl
+        : fallbackUrl;
 
       if (!variant) {
-        let imageUrl = "https://via.placeholder.com/500x700/EFEFEF/666666?text=No+Image";
-        if (row.image && row.image.length > 10) {
-          imageUrl = row.image;
-        } else {
-          // استدعاء الصورة من R2 تلقائياً باسم (كود الموديل - اللون)
-          imageUrl = `${R2_PUBLIC_URL}/${masterCode}-${color}.webp`;
-        }
-
-        variant = {
+        item.variants.push({
           id: row.id,
-          color: color,
-          imageUrl: imageUrl,
-          itemCode: itemCode,
-          material: row.material || "",
-          sizes: [],
+          color,
+          imageUrl,
+          material: compositeKey,
+          itemCode: compositeKey,
           cur_qty: curQty,
-          sizeQuantities: {},
-        };
-        groupedByMasterCode[masterCode].variants.push(variant);
+          totalColorQuantity: curQty,
+          sizes: ["ONE SIZE"],
+        });
       } else {
         variant.cur_qty += curQty;
+        variant.totalColorQuantity += curQty;
       }
 
-      groupedByMasterCode[masterCode].cur_qty += curQty;
-
-      if (size) {
-        variant.sizes.push(size);
-        variant.sizeQuantities = variant.sizeQuantities || {};
-        variant.sizeQuantities[size] = (variant.sizeQuantities[size] || 0) + curQty;
-      }
+      item.cur_qty += curQty;
     });
 
-    const finalProducts = Object.values(groupedByMasterCode).map((product: any) => ({
-      ...product,
-      variants: product.variants.map((variant: any) => ({
-        ...variant,
-        imageUrl: normalizePublicImageUrl(variant.imageUrl),
-      })),
-    }));
+    const finalProducts = Array.from(groupedByMasterCode.values());
 
     const normalizedCategories = categories.map((category) => ({
       ...category,
       image: normalizePublicImageUrl(category.image),
     }));
 
-    // تسلسل البيانات لتجنب مشاكل التواريخ في Next.js
-    return JSON.parse(JSON.stringify({ 
-        products: finalProducts, 
-        categories: normalizedCategories
-    }));
-
+    return JSON.parse(
+      JSON.stringify({
+        products: finalProducts,
+        categories: normalizedCategories,
+      })
+    );
   } catch (error) {
     console.error("Home Data Error:", error);
     return { products: [], categories: [] };

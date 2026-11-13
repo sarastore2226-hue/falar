@@ -7,7 +7,7 @@ interface OrderItem {
   product: string;
   color?: string;
   size?: string;
-  quantity: number; // عدد القطع التام = سريات * 4
+  quantity: number; // إجمالي القطع (سريات * 4)
   price: number;
   item_code?: string;
   master_code?: string;
@@ -52,7 +52,6 @@ export async function POST(request: Request) {
 
     const pricedOrder = await pricePromotionItems(prisma, promotionItems);
 
-    // المعاملة اللحظية: فحص المخزون الفعلي، خصم القطع، وحفظ الطلب
     await prisma.$transaction(async (tx) => {
       for (const item of items) {
         const modelNo = String(item.master_code || item.item_code || "").trim();
@@ -89,7 +88,7 @@ export async function POST(request: Request) {
           );
         }
 
-        // الخصم المباشر من رصيد جدول المعرض
+        // خصم الرصيد بالقطع من جدول Product الموحد المشترك
         await tx.product.update({
           where: { id: product.id },
           data: {
@@ -98,7 +97,6 @@ export async function POST(request: Request) {
         });
       }
 
-      // حفظ الأوردر في جدول orders
       await tx.orders.create({
         data: {
           id: newOrderId,
@@ -110,7 +108,6 @@ export async function POST(request: Request) {
         },
       });
 
-      // حفظ بنود الأوردر
       for (const [index, item] of items.entries()) {
         await tx.order_items.create({
           data: {
