@@ -1,60 +1,50 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/prisma";
+import { normalizePublicImageUrl } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
+const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "https://images.vooy.shop";
+
+// 1️⃣ GET - جلب تفاصيل الموديل وكافة ألوانه ومقاساته
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // في Next.js 15 params عبارة عن Promise يجب انتظاره
     const { id } = await params;
+    const decodedId = decodeURIComponent(id).trim();
 
-    // نحدد إذا كان الطلب من موظف لعرض الكميات الصفرية
     const { searchParams } = new URL(request.url);
     const employeeView = searchParams.get("employee") === "true";
 
-    console.log(`🔍 جلب تفاصيل المنتج ID: ${id}`);
+    console.log(`🔍 جلب تفاصيل المنتج ID: ${decodedId}`);
 
-    // 1. أولاً: نبحث عن أي سجل يطابق هذا المعرف (سواء كان كود رئيسي، فريد، أو كود صنف)
-    // لنعرف ما هو الـ master_code الخاص به
-    const targetProduct = await prisma.products.findFirst({
+    // البحث عن الموديل بالـ ID أو بكود الموديل modelNo
+    const targetProduct = await prisma.product.findFirst({
       where: {
-        OR: [
-          { unique_id: String(id) },
-          { master_code: String(id) },
-          { item_code: String(id) },
-        ],
+        OR: [{ id: decodedId }, { modelNo: decodedId }],
       },
-      select: { master_code: true },
+      select: { modelNo: true },
     });
 
-    if (!targetProduct || !targetProduct.master_code) {
+    if (!targetProduct || !targetProduct.modelNo) {
       return NextResponse.json(
         { success: false, message: "المنتج غير موجود" },
         { status: 404 }
       );
     }
 
-    const masterCode = targetProduct.master_code;
+    const modelNo = targetProduct.modelNo;
+    const whereConditions: any = { modelNo };
 
-    // 2. ثانياً: نجلب كل النسخ (الألوان والمقاسات) التابعة لهذا الكود الرئيسي
-    const whereConditions: any = {
-      master_code: masterCode,
-    };
-
-    // إذا لم يكن موظفاً، نخفي الكميات الصفرية والمخازن غير المتاحة (حسب المنطق الخاص بك)
     if (!employeeView) {
-      whereConditions.cur_qty = { gt: 0 };
-      whereConditions.stor_id = 0;
+      whereConditions.OR = [{ status: "OPEN" }, { currentStock: { gt: 0 } }];
     }
 
-    const allVariants = await prisma.products.findMany({
+    const allVariants = await prisma.product.findMany({
       where: whereConditions,
-      orderBy: { unique_id: "asc" },
+      orderBy: { color: "asc" },
     });
 
     if (allVariants.length === 0) {
@@ -64,113 +54,99 @@ export async function GET(
       );
     }
 
-    // 3. ثالثاً: تجميع البيانات بنفس هيكلية الـ Frontend
-    // نأخذ البيانات الوصفية من أول عنصر
     const mainInfo = allVariants[0];
+    const totalQty = allVariants.reduce((sum, v) => sum + v.currentStock, 0);
 
     const product = {
-      id: mainInfo.unique_id, // نعيد الـ ID المطلوب
-      modelId: mainInfo.master_code,
-      master_code: mainInfo.master_code,
-      price: Number(mainInfo.out_price) || 0,
-      category: mainInfo.group_name || mainInfo.kind_name || "",
-      // هنا الإصلاح: نستخدم item_name بدلاً من description
-      description: mainInfo.item_name || mainInfo.kind_name || "منتج بدون اسم",
-      item_code: mainInfo.item_code,
-      image: mainInfo.images, // الصورة الرئيسية
+      id: mainInfo.id,
+      modelId: mainInfo.modelNo,
+      master_code: mainInfo.modelNo,
+      price: Number(mainInfo.price) || 0,
+      category: mainInfo.group_name || mainInfo.kind_name || mainInfo.material || "عام",
+      group_name: mainInfo.group_name || "",
+      kind_name: mainInfo.kind_name || "",
+      description: mainInfo.description || `موديل ${mainInfo.modelNo}`,
+      item_name: mainInfo.description || `موديل ${mainInfo.modelNo}`,
+      item_code: `${mainInfo.modelNo}-${mainInfo.color}`,
+      image: mainInfo.image
+        ? normalizePublicImageUrl(mainInfo.image)
+        : `${R2_PUBLIC_URL}/${mainInfo.modelNo}-${mainInfo.color}.webp`,
+      cur_qty: totalQty,
       variants: [] as any[],
-      cur_qty: 0, // إجمالي الكمية
     };
 
-    // تجميع الـ Variants
     const variantsMap: { [color: string]: any } = {};
 
     allVariants.forEach((row) => {
-      const color = row.color || "Default";
-      const size = row.size || null;
-      const curQty = Number(row.cur_qty) || 0;
-
-      product.cur_qty += curQty;
+      const color = row.color || "افتراضي";
+      const curQty = Number(row.currentStock) || 0;
+      const fallbackImage = `${R2_PUBLIC_URL}/${row.modelNo}-${color}.webp`;
+      const imageUrl = row.image
+        ? normalizePublicImageUrl(row.image)
+        : fallbackImage;
 
       if (!variantsMap[color]) {
-        // معالجة الصورة
-        let imageUrl = row.images;
-        if (
-          !imageUrl ||
-          imageUrl === "null" ||
-          (imageUrl.startsWith("data:") && imageUrl.length < 100)
-        ) {
-          imageUrl =
-            "https://via.placeholder.com/500x700/EFEFEF/666666?text=No+Image";
-        }
-
         variantsMap[color] = {
-          id: row.unique_id,
+          id: row.id,
           color: color,
           imageUrl: imageUrl,
-          itemCode: row.item_code, // كود اللون
-          sizes: [],
-          sizePrices: {},
-          sizeQuantities: {},
-          sizeItemCodes: {},
-          cur_qty: 0, // إجمالي كمية هذا اللون
-          stor_id: row.stor_id,
-          sizeDetails: [],
+          itemCode: `${row.modelNo}-${color}`,
+          sizes: ["ONE SIZE"],
+          sizePrices: { "ONE SIZE": Number(row.price) || 0 },
+          sizeQuantities: { "ONE SIZE": curQty },
+          sizeItemCodes: { "ONE SIZE": `${row.modelNo}-${color}` },
+          cur_qty: curQty,
+          totalColorQuantity: curQty,
+          stor_id: 0,
+          material: row.material,
+          sizeDetails: [
+            {
+              uniqueId: row.id,
+              itemCode: `${row.modelNo}-${color}`,
+              size: "ONE SIZE",
+              price: Number(row.price) || 0,
+              quantity: curQty,
+            },
+          ],
         };
-      }
-
-      const variant = variantsMap[color];
-      variant.cur_qty += curQty;
-
-      if (size) {
-        if (!variant.sizes.includes(size)) {
-          variant.sizes.push(size);
-        }
-        variant.sizeQuantities[size] = curQty;
-        if (row.item_code) {
-          variant.sizeItemCodes[size] = row.item_code;
-        }
-        variant.sizePrices[size] = Number(row.out_price) || 0;
-        variant.sizeDetails.push({
-          uniqueId: row.unique_id,
-          itemCode: row.item_code || "",
-          size,
-          price: Number(row.out_price) || 0,
-          quantity: curQty,
-        });
+      } else {
+        variantsMap[color].cur_qty += curQty;
+        variantsMap[color].totalColorQuantity += curQty;
       }
     });
 
     product.variants = Object.values(variantsMap);
 
-    return NextResponse.json({
-      success: true,
-      product: product,
-    });
-  } catch (error) {
+    return NextResponse.json({ success: true, product });
+  } catch (error: any) {
     console.error("❌ Error in single product API:", error);
     return NextResponse.json(
-      { success: false, error: "خطأ في السيرفر" },
+      { success: false, error: "خطأ في السيرفر: " + error.message },
       { status: 500 }
     );
   }
 }
 
-// PUT - تحديث منتج وكل نسخه (الألوان والمقاسات) حسب master_code
+// 2️⃣ PUT - تحديث الموديل وكافة نسخه وألوانه وأسعاره من الداشبورد
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+    const decodedId = decodeURIComponent(id).trim();
     const body = await request.json();
 
-    // 1. نحدد الـ master_code: إما من المسار مباشرة أو من جسم الطلب
-    const masterCode = body.master_code || id;
+    const targetModelNo = body.master_code || decodedId;
 
-    // 2. نجلب كل النسخ التابعة لهذا الكود الرئيسي
-    const allVariants = await prisma.products.findMany({
-      where: { master_code: id },
+    const allVariants = await prisma.product.findMany({
+      where: {
+        OR: [
+          { modelNo: targetModelNo },
+          { modelNo: decodedId },
+          { id: decodedId },
+        ],
+      },
     });
 
     if (allVariants.length === 0) {
@@ -180,102 +156,106 @@ export async function PUT(
       );
     }
 
-    // 3. البيانات المشتركة التي تُطبّق على كل النسخ
-    const sharedData: any = {
-      item_name: body.item_name,
-      group_name: body.group_name,
-      kind_name: body.kind_name,
-    };
+    const activeModelNo = allVariants[0].modelNo;
 
-    if (masterCode) sharedData.master_code = masterCode;
+    // تحديث البيانات المشتركة
+    const sharedData: any = {};
+    if (body.item_name || body.description) {
+      sharedData.description = body.item_name || body.description;
+    }
+    if (body.group_name !== undefined) sharedData.group_name = body.group_name;
+    if (body.kind_name !== undefined) sharedData.kind_name = body.kind_name;
+    if (body.master_code && body.master_code !== activeModelNo) {
+      sharedData.modelNo = body.master_code;
+    }
 
-    // 4. تحديث كل النسخ (البيانات المشتركة)
-    await prisma.products.updateMany({
-      where: { master_code: id },
-      data: sharedData,
-    });
-
-    // 5. تحديث النسخة المحددة (اللون/المقاس/الكود/الكمية/الصورة)
-    // نبحث عن السجل المطابق للكود المرسل أو أول نسخة
-    const targetVariant =
-      allVariants.find(
-        (v) => body.item_code && v.item_code === body.item_code
-      ) ||
-      allVariants.find((v) => v.color === body.color && v.size === body.size) ||
-      allVariants[0];
-
-    if (targetVariant) {
-      await prisma.products.update({
-        where: { unique_id: targetVariant.unique_id },
-        data: {
-          item_code: body.item_code || targetVariant.item_code,
-          color: body.color || targetVariant.color,
-          size: body.size || targetVariant.size,
-          out_price:
-            body.out_price !== undefined
-              ? parseFloat(body.out_price) || 0
-              : targetVariant.out_price,
-          cur_qty: parseInt(body.cur_qty) || 0,
-          images: body.images || targetVariant.images,
-        },
+    if (Object.keys(sharedData).length > 0) {
+      await prisma.product.updateMany({
+        where: { modelNo: activeModelNo },
+        data: sharedData,
       });
     }
 
-    if (Array.isArray(body.variants)) {
+    // تحديث النسخ الفردية إذا أُرسلت كـ variants
+    if (Array.isArray(body.variants) && body.variants.length > 0) {
       for (const variant of body.variants) {
-        if (!variant.uniqueId) continue;
-        if (!variant.color?.trim() || !variant.size?.trim()) {
-          throw new Error("اللون والمقاس مطلوبان لكل نسخة");
+        if (!variant.uniqueId && !variant.id) continue;
+        const targetId = String(variant.uniqueId || variant.id);
+        const price = Number(variant.out_price ?? variant.price);
+        const quantity = Number(variant.cur_qty ?? variant.quantity);
+
+        if (!variant.color?.trim()) {
+          throw new Error("اللون مطلوب لكل نسخة");
         }
-        const price = Number(variant.out_price);
-        const quantity = Number(variant.cur_qty);
         if (!Number.isFinite(price) || price < 0 || !Number.isInteger(quantity) || quantity < 0) {
-          throw new Error("السعر والكمية غير صحيحين");
+          throw new Error("السعر أو الكمية غير صالحة للنسخة " + variant.color);
         }
-        await prisma.products.update({
-          where: { unique_id: String(variant.uniqueId) },
+
+        await prisma.product.update({
+          where: { id: targetId },
           data: {
-            item_code: variant.itemCode || undefined,
             color: variant.color.trim(),
-            size: variant.size.trim(),
-            out_price: price,
-            cur_qty: quantity,
+            price: price,
+            currentStock: quantity,
+            stockQty: quantity,
           },
+        });
+      }
+    } else {
+      // تحديث نسخة مفردة إذا لم تُرسل مصفوفة
+      const targetVariant =
+        allVariants.find((v) => body.color && v.color === body.color) ||
+        allVariants[0];
+
+      if (targetVariant) {
+        const updateData: any = {};
+        if (body.color) updateData.color = body.color.trim();
+        if (body.out_price !== undefined) updateData.price = parseFloat(body.out_price) || 0;
+        if (body.cur_qty !== undefined) {
+          const qty = parseInt(body.cur_qty) || 0;
+          updateData.currentStock = qty;
+          updateData.stockQty = qty;
+        }
+        if (body.images || body.image) {
+          updateData.image = body.images || body.image;
+        }
+
+        await prisma.product.update({
+          where: { id: targetVariant.id },
+          data: updateData,
         });
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      message: "تم تحديث المنتج بنجاح",
-    });
-  } catch (error) {
+    return NextResponse.json({ success: true, message: "تم تحديث المنتج بنجاح" });
+  } catch (error: any) {
     console.error("❌ Error updating product:", error);
     return NextResponse.json(
-      { success: false, error: "فشل في تحديث المنتج" },
+      { success: false, error: error.message || "فشل في تحديث المنتج" },
       { status: 500 }
     );
   }
 }
 
+// 3️⃣ DELETE - حذف الموديل وجميع نسخه
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    const productId = String(id).trim();
+    const decodedId = decodeURIComponent(id).trim();
 
-    if (!productId) {
+    if (!decodedId) {
       return NextResponse.json(
         { success: false, error: "معرف المنتج مطلوب" },
         { status: 400 }
       );
     }
 
-    const result = await prisma.products.deleteMany({
+    const result = await prisma.product.deleteMany({
       where: {
-        OR: [{ master_code: productId }, { unique_id: productId }],
+        OR: [{ modelNo: decodedId }, { id: decodedId }],
       },
     });
 
@@ -291,10 +271,19 @@ export async function DELETE(
       message: "تم حذف الموديل وجميع نسخه بنجاح",
       deletedCount: result.count,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("❌ Error deleting product:", error);
+    if (error.code === "P2003") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "لا يمكن حذف هذا الصنف لوجود طلبات أو فواتير سابقة مرتبطة به في المعرض.",
+        },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
-      { success: false, error: "فشل في حذف المنتج" },
+      { success: false, error: error.message || "فشل في حذف المنتج" },
       { status: 500 }
     );
   }

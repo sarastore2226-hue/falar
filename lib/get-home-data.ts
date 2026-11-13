@@ -3,43 +3,47 @@ import { normalizePublicImageUrl } from "./utils";
 
 const prisma = new PrismaClient();
 
+const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "https://images.vooy.shop";
+
 export async function getHomeData() {
   try {
-    // 1. جلب المنتجات (عدد محدود للسرعة)
-    const productsRaw = await prisma.products.findMany({
+    // 1. جلب المنتجات من جدول Product المعتمد (المعرض)
+    const productsRaw = await prisma.product.findMany({
       where: {
-        cur_qty: { gt: 0 },
-        stor_id: 0,
+        OR: [
+          { status: "OPEN" },
+          { currentStock: { gt: 0 } },
+        ],
       },
-      orderBy: { unique_id: "desc" }, // الأحدث
+      orderBy: { id: "desc" }, // الأحدث
       take: 200, // نجلب 200 لتكفي الصفحة الرئيسية
     });
 
     const categories = await prisma.categories.findMany();
 
-    // 2. تجميع المنتجات (نفس منطق الـ API)
+    // 2. تجميع المنتجات (نفس منطق الـ API الأصلي بالكامل)
     const groupedByMasterCode: { [key: string]: any } = {};
 
     productsRaw.forEach((row) => {
-      const masterCode = row.master_code;
+      const masterCode = row.modelNo;
       if (!masterCode) return;
 
       const color = row.color || "افتراضي";
-      const size = row.size || null;
-      const curQty = Number(row.cur_qty) || 0;
-      const itemCode = row.item_code || "";
+      const size = "ONE SIZE"; // المقاس الافتراضي للجملة
+      const curQty = Number(row.currentStock) || 0;
+      const itemCode = `${row.modelNo}-${color}`;
 
       if (!groupedByMasterCode[masterCode]) {
         groupedByMasterCode[masterCode] = {
           modelId: masterCode,
           master_code: masterCode,
-          price: row.out_price || 0,
-          category: row.group_name || row.kind_name || "",
-          description: row.item_name || row.kind_name || "منتج بدون وصف",
+          price: row.price || 0,
+          category: row.group_name || row.kind_name || row.material || "",
+          description: row.description || row.kind_name || "منتج بدون وصف",
           group_name: row.group_name || "",
           kind_name: row.kind_name || "",
-          item_name: row.item_name || "",
-          item_code: "",
+          item_name: row.description || "",
+          item_code: itemCode,
           cur_qty: 0,
           variants: [],
         };
@@ -51,14 +55,19 @@ export async function getHomeData() {
 
       if (!variant) {
         let imageUrl = "https://via.placeholder.com/500x700/EFEFEF/666666?text=No+Image";
-        if (row.images && row.images.length > 50) {
-             imageUrl = row.images;
+        if (row.image && row.image.length > 10) {
+          imageUrl = row.image;
+        } else {
+          // استدعاء الصورة من R2 تلقائياً باسم (كود الموديل - اللون)
+          imageUrl = `${R2_PUBLIC_URL}/${masterCode}-${color}.webp`;
         }
 
         variant = {
-          id: row.unique_id,
+          id: row.id,
           color: color,
           imageUrl: imageUrl,
+          itemCode: itemCode,
+          material: row.material || "",
           sizes: [],
           cur_qty: curQty,
           sizeQuantities: {},

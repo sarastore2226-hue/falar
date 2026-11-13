@@ -1,17 +1,16 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-import { pricePromotionItems } from "../../../lib/promotions";
-import { createPaymobCheckoutSession } from "../../../lib/paymob";
-
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/prisma";
+import { pricePromotionItems, PromotionInputItem } from "@/lib/promotions";
+import { createPaymobCheckoutSession } from "@/lib/paymob";
 
 interface OrderItem {
   product: string;
   color?: string;
   size?: string;
-  quantity: number;
+  quantity: number; // عدد القطع التام = سريات * 4
   price: number;
   item_code?: string;
+  master_code?: string;
   category?: string;
 }
 
@@ -20,15 +19,7 @@ interface OrderRequest {
   address: string;
   phone: string;
   items: OrderItem[];
-  total_price?: number;
   payment_method?: "cod" | "paymob";
-}
-
-class InsufficientStockError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "InsufficientStockError";
-  }
 }
 
 export async function POST(request: Request) {
@@ -44,75 +35,96 @@ export async function POST(request: Request) {
       orderData.items.length === 0
     ) {
       return NextResponse.json(
-        { success: false, error: "بيانات الطلب غير مكتملة أو غير صحيحة." },
+        { success: false, error: "بيانات الطلب غير مكتملة." },
         { status: 400 }
       );
     }
 
-    // ✅ تم حذف total_price من هنا لحل خطأ ESLint
     const { customer_name, address, phone, items, payment_method = "cod" } = orderData;
-    const newOrderId = "ORD-" + new Date().getTime();
-    const pricedOrder = await pricePromotionItems(prisma, items);
+    const newOrderId = "ORD-" + Date.now();
 
-    const orderItemsWithMergedNames = items.map((item) => ({
-      ...item,
-      product: `${item.product} - اللون: ${item.color || "غير محدد"} - المقاس: ${item.size || "غير محدد"}`,
+    const promotionItems: PromotionInputItem[] = items.map((item) => ({
+      product: item.product,
+      category: item.category,
+      quantity: item.quantity,
+      price: item.price,
     }));
 
-    // حفظ الطلب في قاعدة البيانات وتنقيص المخزون بأمان
+    const pricedOrder = await pricePromotionItems(prisma, promotionItems);
+
+    // المعاملة اللحظية: فحص المخزون الفعلي، خصم القطع، وحفظ الطلب
     await prisma.$transaction(async (tx) => {
       for (const item of items) {
-        const itemCode = item.item_code?.trim();
-        if (!itemCode) continue;
+        const modelNo = String(item.master_code || item.item_code || "").trim();
+        const color = String(item.color || "افتراضي").trim();
+        const piecesToDeduct = Number(item.quantity) || 0;
 
-        const product = await tx.products.findFirst({
-          where: { item_code: itemCode },
+        if (!modelNo) continue;
+
+        let product = await tx.product.findUnique({
+          where: {
+            modelNo_color: {
+              modelNo: modelNo,
+              color: color,
+            },
+          },
         });
 
-        if (!product) continue;
+        if (!product) {
+          product = await tx.product.findFirst({
+            where: {
+              modelNo: { equals: modelNo, mode: "insensitive" },
+              color: { equals: color, mode: "insensitive" },
+            },
+          });
+        }
 
-        const availableQty = Number(product.cur_qty) || 0;
+        if (!product) {
+          throw new Error(`الصنف غير متوفر بالمخزن: موديل ${modelNo} لون ${color}`);
+        }
 
-        if (availableQty < item.quantity) {
-          throw new InsufficientStockError(
-            `الكمية المتاحة غير كافية للمنتج "${item.product}" — المطلوب: ${item.quantity}، المتاح: ${availableQty}`
+        if (product.status !== "OPEN" && product.currentStock < piecesToDeduct) {
+          throw new Error(
+            `الكمية المتاحة لا تكفي للصنف ${modelNo} (${color}). المتبقي بالمخزن: ${product.currentStock} قطعة.`
           );
         }
 
-        await tx.products.update({
-          where: { unique_id: product.unique_id },
+        // الخصم المباشر من رصيد جدول المعرض
+        await tx.product.update({
+          where: { id: product.id },
           data: {
-            cur_qty: availableQty - item.quantity,
+            currentStock: { decrement: piecesToDeduct },
           },
         });
       }
 
+      // حفظ الأوردر في جدول orders
       await tx.orders.create({
         data: {
           id: newOrderId,
-          customer_name: customer_name,
-          address: address,
-          phone: phone,
+          customer_name,
+          address,
+          phone,
           total_price: pricedOrder.total,
           status: payment_method === "paymob" ? "بانتظار الدفع" : "تحت التجهيز",
         },
       });
 
-      for (const [index, item] of orderItemsWithMergedNames.entries()) {
+      // حفظ بنود الأوردر
+      for (const [index, item] of items.entries()) {
         await tx.order_items.create({
           data: {
             order_id: newOrderId,
-            product: item.product,
+            product: `${item.product} - اللون: ${item.color || "افتراضي"}`,
             quantity: item.quantity,
-            price: pricedOrder.items[index].finalUnitPrice,
+            price: pricedOrder.items[index]?.finalUnitPrice ?? item.price,
             color: item.color || "",
-            item_code: item.item_code || "",
+            item_code: item.master_code || item.item_code || "",
           },
         });
       }
     });
 
-    // 💳 إذا اختار العميل الدفع الإلكتروني عبر Paymob
     if (payment_method === "paymob") {
       try {
         const names = customer_name.trim().split(" ");
@@ -125,7 +137,7 @@ export async function POST(request: Request) {
           customer: {
             first_name: firstName,
             last_name: lastName,
-            phone: phone,
+            phone,
             street: address,
           },
         });
@@ -136,37 +148,25 @@ export async function POST(request: Request) {
           paymentUrl: checkoutUrl,
         });
       } catch (paymobErr: unknown) {
-        const errorMsg = paymobErr instanceof Error ? paymobErr.message : "فشل في الاتصال ببوابة الدفع";
-        console.error("❌ Paymob checkout error:", errorMsg);
-
-        // إرجاع رسالة الخطأ للعميل مباشرة في الشاشة بدلاً من حفظه كاش تلقائياً
+        const errorMsg = paymobErr instanceof Error ? paymobErr.message : "خطأ في بوابة الدفع";
         return NextResponse.json(
-          {
-            success: false,
-            error: errorMsg,
-          },
+          { success: false, error: errorMsg },
           { status: 500 }
         );
       }
     }
 
-    // الدفع عند الاستلام كاش
     return NextResponse.json({
       success: true,
       orderId: newOrderId,
-      message: "تم استلام طلبك بنجاح! رقم الطلب: " + newOrderId,
+      message: `تم استلام طلبك بنجاح! رقم الطلب: ${newOrderId}`,
     });
-  } catch (error) {
-    console.error("Error in saveOrder API:", error);
-    if (error instanceof InsufficientStockError) {
-      return NextResponse.json(
-        { success: false, error: error.message },
-        { status: 400 }
-      );
-    }
+  } catch (error: unknown) {
+    console.error("SaveOrder Error:", error);
+    const errorMsg = error instanceof Error ? error.message : "فشل في حفظ الطلب.";
     return NextResponse.json(
-      { success: false, error: "فشل في حفظ الطلب." },
-      { status: 500 }
+      { success: false, error: errorMsg },
+      { status: 400 }
     );
   }
 }

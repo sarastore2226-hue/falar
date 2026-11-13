@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
-// ✅ إنشاء الاتصال مباشرة هنا لتجاوز أي مشاكل في الاستيراد
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/prisma";
+import { normalizePublicImageUrl } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
+
+const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "https://images.vooy.shop";
 
 // 1️⃣ دالة GET
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const category = searchParams.get("category");
-    const search = searchParams.get("search");
+    const search = searchParams.get("search") || "";
+    const categoryParam = searchParams.get("category");
     const pageParam = searchParams.get("page");
     const limitParam = searchParams.get("limit");
     const employeeView = searchParams.get("employee") === "true";
@@ -22,143 +22,139 @@ export async function GET(request: Request) {
 
     const andConditions: any[] = [];
 
+    // إذا لم يكن موظفاً ولم يكن تصديراً، نظهر المتاح فقط
     if (!employeeView && !isExport) {
-      andConditions.push({ cur_qty: { gt: 0 }, stor_id: 0 });
+      andConditions.push({
+        OR: [
+          { status: "OPEN" },
+          { currentStock: { gt: 0 } }
+        ]
+      });
     }
 
+    // البحث النصي في الكود، اللون، الوصف، الجروب، والنوع
     if (search) {
-      const searchOR: any[] = [
-        { item_name: { contains: search, mode: "insensitive" } },
-        { item_code: { contains: search, mode: "insensitive" } },
-        { master_code: { contains: search, mode: "insensitive" } },
-      ];
-      if (!isNaN(Number(search))) {
-        searchOR.push({ unique_id: { equals: String(search) } });
-      }
-      andConditions.push({ OR: searchOR });
+      andConditions.push({
+        OR: [
+          { modelNo: { contains: search, mode: "insensitive" } },
+          { color: { contains: search, mode: "insensitive" } },
+          { description: { contains: search, mode: "insensitive" } },
+          { material: { contains: search, mode: "insensitive" } },
+          { group_name: { contains: search, mode: "insensitive" } },
+          { kind_name: { contains: search, mode: "insensitive" } },
+        ],
+      });
     }
 
-    let categoryName = category;
-    if (category && !isNaN(parseInt(category))) {
+    // تحويل ID التصنيف الرقمي إلى اسم التصنيف إن وُجد
+    let categoryName = categoryParam;
+    if (categoryParam && !isNaN(parseInt(categoryParam))) {
       const cat = await prisma.categories.findUnique({
-        where: { id: parseInt(category) },
+        where: { id: parseInt(categoryParam) },
       });
       if (cat) categoryName = cat.name;
     }
+
     if (categoryName) {
       andConditions.push({
         OR: [
           { group_name: { contains: categoryName, mode: "insensitive" } },
           { kind_name: { contains: categoryName, mode: "insensitive" } },
-          { item_name: { contains: categoryName, mode: "insensitive" } },
+          { material: { contains: categoryName, mode: "insensitive" } },
+          { description: { contains: categoryName, mode: "insensitive" } },
         ],
       });
     }
 
-    const whereConditions =
-      andConditions.length > 0 ? { AND: andConditions } : {};
+    const whereConditions = andConditions.length > 0 ? { AND: andConditions } : {};
 
-    // إذا كان تصدير، نجلب البيانات الخام فوراً
+    // تصدير الإكسيل للبيانات الخام
     if (isExport) {
-      const rawProducts = await prisma.products.findMany({
+      const rawExport = await prisma.product.findMany({
         where: whereConditions,
-        orderBy: { unique_id: "desc" },
+        orderBy: { modelNo: "asc" },
       });
-      return NextResponse.json({ success: true, data: rawProducts });
+
+      const exportData = rawExport.map((p) => ({
+        master_code: p.modelNo,
+        item_code: `${p.modelNo}-${p.color}`,
+        item_name: p.description || `موديل ${p.modelNo}`,
+        color: p.color,
+        size: "ONE SIZE",
+        out_price: p.price,
+        cur_qty: p.currentStock,
+        group_name: p.group_name || "",
+        kind_name: p.kind_name || "",
+        material: p.material || "",
+        images: p.image || "",
+      }));
+
+      return NextResponse.json({ success: true, data: exportData });
     }
 
-    // ✅ جلب المنتجات
-    const allProductsRaw = await prisma.products.findMany({
+    // جلب المنتجات مرتبة بالأحدث
+    const rawProducts = await prisma.product.findMany({
       where: whereConditions,
-      orderBy: { unique_id: "desc" },
+      orderBy: { id: "desc" },
     });
 
-    // تجميع المنتجات حسب master_code
-    const groupedByMasterCode: { [key: string]: any } = {};
-    
-    allProductsRaw.forEach((row) => {
-      const masterCode = row.master_code;
-      if (!masterCode) return;
+    const groupedMap = new Map<string, any>();
 
-      if (!groupedByMasterCode[masterCode]) {
-        groupedByMasterCode[masterCode] = {
-          modelId: masterCode,
-          master_code: masterCode,
-          item_code: row.item_code,
-          description: row.item_name || "منتج",
-          item_name: row.item_name,
-          price: row.out_price || 0,
+    for (const p of rawProducts) {
+      const modelId = p.modelNo.trim();
+      const colorName = p.color.trim();
+
+      const fallbackImage = `${R2_PUBLIC_URL}/${modelId}-${colorName}.webp`;
+      const imageUrl = p.image
+        ? normalizePublicImageUrl(p.image)
+        : fallbackImage;
+
+      if (!groupedMap.has(modelId)) {
+        groupedMap.set(modelId, {
+          modelId: modelId,
+          master_code: modelId,
+          price: p.price,
+          category: p.group_name || p.kind_name || p.material || "عام",
+          group_name: p.group_name || "",
+          kind_name: p.kind_name || "",
+          description: p.description || `موديل ${modelId}`,
           cur_qty: 0,
-          category: row.group_name || "",
           variants: [],
-        };
-      }
-
-      const quantity = parseInt(row.cur_qty?.toString() || "0", 10);
-      groupedByMasterCode[masterCode].cur_qty += quantity;
-
-      const color = row.color || "Default";
-      let variant = groupedByMasterCode[masterCode].variants.find(
-        (v: any) => v.color === color
-      );
-
-      // ✅ استخراج اسم الصورة من الرابط إذا كان موجوداً
-      let imageUrl = row.images || "";
-      // إذا كان الرابط من R2، نستخرج اسم الملف (الذي هو item_code)
-      let imageFileName = "";
-      if (imageUrl && imageUrl.includes('r2.dev')) {
-        const urlParts = imageUrl.split('/');
-        imageFileName = urlParts[urlParts.length - 1];
-        // إزالة الامتداد للحصول على item_code
-        if (imageFileName.includes('.')) {
-          imageFileName = imageFileName.substring(0, imageFileName.lastIndexOf('.'));
-        }
-      }
-
-      if (!variant) {
-        groupedByMasterCode[masterCode].variants.push({
-          id: row.unique_id,
-          color: color,
-          // ✅ استخدام item_code الخاص بهذا اللون (من قاعدة البيانات)
-          item_code: row.item_code || "",
-          // ✅ اسم ملف الصورة (الذي هو item_code)
-          imageFileName: imageFileName,
-          imageUrl: imageUrl,
-          sizes: [row.size || "Free"],
-          quantities: [quantity],
-          sizeItemCodes: { [row.size || "Free"]: row.item_code || "" },
-          sizePrices: { [row.size || "Free"]: Number(row.out_price) || 0 },
         });
-      } else {
-        if (!variant.sizes.includes(row.size || "Free")) {
-          variant.sizes.push(row.size || "Free");
-        }
-        variant.quantities.push(quantity);
-        if (row.size) {
-          variant.sizeItemCodes[row.size] = row.item_code || "";
-        }
-        variant.sizePrices[row.size || "Free"] = Number(row.out_price) || 0;
       }
-    });
 
-    const allGroupedProducts = Object.values(groupedByMasterCode);
-    const totalProducts = allGroupedProducts.length;
+      const item = groupedMap.get(modelId);
+      item.cur_qty += p.currentStock;
 
-    // ✅ تطبيق الترقيم
-    let paginatedProducts = allGroupedProducts;
+      item.variants.push({
+        id: p.id,
+        color: colorName,
+        imageUrl: imageUrl,
+        cur_qty: p.currentStock,
+        price: p.price,
+        itemCode: `${modelId}-${colorName}`,
+        sizes: ["ONE SIZE"],
+        material: p.material,
+      });
+    }
+
+    const allGrouped = Array.from(groupedMap.values());
+    const totalProducts = allGrouped.length;
+    let paginated = allGrouped;
+
     if (limitParam) {
       const skip = (page - 1) * limit;
-      paginatedProducts = allGroupedProducts.slice(skip, skip + limit);
+      paginated = allGrouped.slice(skip, skip + limit);
     }
 
     return NextResponse.json({
       success: true,
-      products: paginatedProducts,
+      products: paginated,
       pagination: {
         page,
         limit: limitParam ? limit : totalProducts,
         totalProducts,
-        totalPages: limitParam ? Math.ceil(totalProducts / limit) : 1,
+        totalPages: limitParam ? Math.ceil(totalProducts / limit) || 1 : 1,
       },
     });
   } catch (error: any) {
@@ -169,93 +165,102 @@ export async function GET(request: Request) {
   }
 }
 
-// 2️⃣ دالة POST (الرفع والإضافة)
+// 2️⃣ دالة POST (إضافة وتحديث المنتجات من الداشبورد يدوياً أو عبر إكسيل)
 export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    // A. الرفع الجماعي (Array)
+    // في حال الإضافة الجماعية عبر إكسيل
     if (Array.isArray(body)) {
-      console.log(`🚀 Bulk uploading ${body.length} items...`);
+      let count = 0;
+      for (const item of body) {
+        const modelNo = String(item.master_code || item.modelNo || "").trim();
+        const color = String(item.color || "افتراضي").trim();
+        if (!modelNo) continue;
 
-      const cleanData = body.map((item, index) => {
-        const timestamp = Date.now().toString(36);
-        const random = Math.random().toString(36).substring(2, 8);
-
-        return {
-          unique_id: `PRD-${timestamp}-${random}-${index}`.toUpperCase(),
-          item_name: item.item_name?.toString() || "بدون اسم",
-          master_code: item.master_code?.toString() || "",
-          item_code: item.item_code?.toString() || `${item.master_code}-${index}`,
-          out_price: parseFloat(item.out_price) || 0,
-          cur_qty: parseInt(item.cur_qty) || 0,
-          color: item.color?.toString() || "Default",
-          size: item.size?.toString() || "Free",
-          group_name: item.group_name?.toString() || "عام",
-          kind_name: item.kind_name?.toString() || "عام",
-          images: item.images?.toString() || "",
-          stor_id: 0,
-          type_id: 0,
-          item_id: 0,
-          unit_id: 0,
-          unit_convert: 1,
-          multi_unit: false,
-          multi_type: false,
-          unit_def1_id: 0,
-          group_id: 0,
-          class_id: 0,
-          is_basic_unit: true,
-          kind_id: 0,
-          place_id: 0,
-          unit_name_id: 0,
-          unit_name: "قطعة",
-          class_name: item.group_name?.toString() || "عام",
-          place_name: "المخزن الرئيسي",
-        };
-      });
-
-      const result = await prisma.products.createMany({
-        data: cleanData,
-        skipDuplicates: true,
-      });
-
+        await prisma.product.upsert({
+          where: {
+            modelNo_color: {
+              modelNo: modelNo,
+              color: color,
+            },
+          },
+          update: {
+            description: item.item_name || item.description,
+            price: parseFloat(item.out_price || item.price) || 0,
+            currentStock: parseInt(item.cur_qty || item.stockQty) || 0,
+            stockQty: parseInt(item.cur_qty || item.stockQty) || 0,
+            group_name: item.group_name || "",
+            kind_name: item.kind_name || "",
+            material: item.material || "",
+            image: item.images || item.image || "",
+          },
+          create: {
+            modelNo: modelNo,
+            color: color,
+            description: item.item_name || item.description || `موديل ${modelNo}`,
+            price: parseFloat(item.out_price || item.price) || 0,
+            currentStock: parseInt(item.cur_qty || item.stockQty) || 0,
+            stockQty: parseInt(item.cur_qty || item.stockQty) || 0,
+            group_name: item.group_name || "",
+            kind_name: item.kind_name || "",
+            material: item.material || "",
+            image: item.images || item.image || "",
+          },
+        });
+        count++;
+      }
       return NextResponse.json({
         success: true,
-        message: `تم رفع ${result.count} منتج بنجاح`,
+        count,
+        message: `تم رفع وتحديث ${count} صنف بنجاح`,
       });
     }
 
-    // B. منتج فردي
-    else {
-      const timestamp = Date.now().toString(36);
-      const random = Math.random().toString(36).substring(2, 9);
+    // إضافة صنف فردي
+    const modelNo = String(body.master_code || body.modelNo || "").trim();
+    const color = String(body.color || "افتراضي").trim();
 
-      const newProduct = await prisma.products.create({
-        data: {
-          unique_id: `PRD-${timestamp}-${random}`.toUpperCase(),
-          ...body,
-          out_price: parseFloat(body.out_price),
-          cur_qty: parseInt(body.cur_qty),
-          stor_id: 0,
-          type_id: 0,
-          item_id: 0,
-          unit_id: 0,
-          unit_convert: 1,
-          group_id: 0,
-          kind_id: 0,
-          class_id: 0,
-          place_id: 0,
-          unit_name_id: 0,
-          unit_def1_id: 0,
-          multi_unit: false,
-          multi_type: false,
-          is_basic_unit: true,
+    if (!modelNo) {
+      return NextResponse.json(
+        { success: false, error: "كود الموديل مطلوب" },
+        { status: 400 }
+      );
+    }
+
+    const createdProduct = await prisma.product.upsert({
+      where: {
+        modelNo_color: {
+          modelNo: modelNo,
+          color: color,
         },
-      });
-      return NextResponse.json({ success: true, product: newProduct });
-    }
+      },
+      update: {
+        description: body.item_name || body.description,
+        price: parseFloat(body.out_price || body.price) || 0,
+        currentStock: parseInt(body.cur_qty || body.stockQty) || 0,
+        stockQty: parseInt(body.cur_qty || body.stockQty) || 0,
+        group_name: body.group_name || "",
+        kind_name: body.kind_name || "",
+        material: body.material || "",
+        image: body.images || body.image || "",
+      },
+      create: {
+        modelNo: modelNo,
+        color: color,
+        description: body.item_name || body.description || `موديل ${modelNo}`,
+        price: parseFloat(body.out_price || body.price) || 0,
+        currentStock: parseInt(body.cur_qty || body.stockQty) || 0,
+        stockQty: parseInt(body.cur_qty || body.stockQty) || 0,
+        group_name: body.group_name || "",
+        kind_name: body.kind_name || "",
+        material: body.material || "",
+        image: body.images || body.image || "",
+      },
+    });
+
+    return NextResponse.json({ success: true, product: createdProduct });
   } catch (error: any) {
-    console.error("❌ Error:", error);
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }
