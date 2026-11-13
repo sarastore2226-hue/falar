@@ -4,9 +4,8 @@ import {
   ListObjectsV2Command,
   DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/prisma";
+import { normalizePublicImageUrl } from "@/lib/utils";
 
 const r2 = new S3Client({
   region: "auto",
@@ -18,28 +17,34 @@ const r2 = new S3Client({
 });
 
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || "matgar1";
-const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL;
+const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "https://images.vooy.shop";
 
-// جمع كل روابط الصور المستخدمة فعلياً من قاعدة البيانات
+// جمع كل روابط الصور المستخدمة فعلياً من قاعدة البيانات (شامل جدول Product الموحد)
 async function getUsedImageKeys() {
   const usedKeys = new Set();
 
-  const products = await prisma.products.findMany({
-    where: { images: { not: null } },
-    select: { images: true },
-  });
-
-  const categories = await prisma.categories.findMany({
-    where: { image: { not: null } },
-    select: { image: true },
-  });
-
-  const companies = await prisma.company_info.findMany({
-    select: { logo: true },
-  });
+  const [unifiedProducts, legacyProducts, categories, companies] =
+    await Promise.all([
+      prisma.product.findMany({
+        where: { image: { not: null } },
+        select: { image: true },
+      }),
+      prisma.products.findMany({
+        where: { images: { not: null } },
+        select: { images: true },
+      }),
+      prisma.categories.findMany({
+        where: { image: { not: null } },
+        select: { image: true },
+      }),
+      prisma.company_info.findMany({
+        select: { logo: true },
+      }),
+    ]);
 
   const allUrls = [
-    ...products.map((p) => p.images),
+    ...unifiedProducts.map((p) => p.image),
+    ...legacyProducts.map((p) => p.images),
     ...categories.map((c) => c.image),
     ...companies.map((c) => c.logo),
   ];
@@ -47,8 +52,10 @@ async function getUsedImageKeys() {
   for (const url of allUrls) {
     if (!url) continue;
     const urls = url.split(",").map((u) => u.trim());
-    for (const singleUrl of urls) {
-      if (!singleUrl) continue;
+    for (const rawUrl of urls) {
+      if (!rawUrl) continue;
+      const singleUrl = normalizePublicImageUrl(rawUrl) || rawUrl;
+
       if (singleUrl.startsWith(R2_PUBLIC_URL)) {
         const key = singleUrl.replace(`${R2_PUBLIC_URL}/`, "");
         usedKeys.add(key);

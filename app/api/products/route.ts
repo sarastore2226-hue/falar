@@ -1,24 +1,26 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { normalizePublicImageUrl } from "@/lib/utils";
-import { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "https://images.vooy.shop";
 
-interface ProductVariantItem {
+interface ProductVariantResponse {
   id: string;
   color: string;
   imageUrl: string;
+  hasImage: boolean;
   cur_qty: number;
   price: number;
-  material: string;
   itemCode: string;
+  item_code: string;
   sizes: string[];
+  material: string | null;
 }
 
-interface GroupedProduct {
+interface GroupedProductResponse {
   modelId: string;
   master_code: string;
   price: number;
@@ -27,22 +29,22 @@ interface GroupedProduct {
   kind_name: string;
   description: string;
   cur_qty: number;
-  variants: ProductVariantItem[];
+  variants: ProductVariantResponse[];
 }
 
-interface BulkProductRow {
+interface ProductPayloadInput {
   master_code?: string;
   modelNo?: string;
   color?: string;
-  material?: string;
   item_name?: string;
   description?: string;
-  out_price?: number | string;
-  price?: number | string;
-  cur_qty?: number | string;
-  stockQty?: number | string;
+  out_price?: string | number;
+  price?: string | number;
+  cur_qty?: string | number;
+  stockQty?: string | number;
   group_name?: string;
   kind_name?: string;
+  material?: string;
   images?: string;
   image?: string;
 }
@@ -63,31 +65,28 @@ export async function GET(request: Request) {
 
     const andConditions: Prisma.ProductWhereInput[] = [];
 
-    // إظهار المتاح فقط للعميل العادي
+    // إذا لم يكن موظفاً ولم يكن تصديراً، نظهر المتاح فقط
     if (!employeeView && !isExport) {
       andConditions.push({
-        OR: [
-          { status: "OPEN" },
-          { currentStock: { gt: 0 } },
-        ],
+        OR: [{ status: "OPEN" }, { currentStock: { gt: 0 } }],
       });
     }
 
-    // البحث النصي في الموديل، اللون، الكي المميز material، الوصف، والأقسام
+    // البحث النصي في الكود، اللون، الوصف، الجروب، والنوع
     if (search) {
       andConditions.push({
         OR: [
           { modelNo: { contains: search, mode: "insensitive" } },
           { color: { contains: search, mode: "insensitive" } },
-          { material: { contains: search, mode: "insensitive" } },
           { description: { contains: search, mode: "insensitive" } },
+          { material: { contains: search, mode: "insensitive" } },
           { group_name: { contains: search, mode: "insensitive" } },
           { kind_name: { contains: search, mode: "insensitive" } },
         ],
       });
     }
 
-    // فحص الفئات بالاسم أو الرقم
+    // تحويل ID التصنيف الرقمي إلى اسم التصنيف إن وُجد
     let categoryName = categoryParam;
     if (categoryParam && !isNaN(parseInt(categoryParam, 10))) {
       const cat = await prisma.categories.findUnique({
@@ -107,8 +106,10 @@ export async function GET(request: Request) {
       });
     }
 
-    const whereConditions: Prisma.ProductWhereInput = andConditions.length > 0 ? { AND: andConditions } : {};
+    const whereConditions: Prisma.ProductWhereInput =
+      andConditions.length > 0 ? { AND: andConditions } : {};
 
+    // تصدير الإكسيل للبيانات الخام
     if (isExport) {
       const rawExport = await prisma.product.findMany({
         where: whereConditions,
@@ -117,7 +118,7 @@ export async function GET(request: Request) {
 
       const exportData = rawExport.map((p) => ({
         master_code: p.modelNo,
-        item_code: p.material || `${p.modelNo}${p.color}`,
+        item_code: `${p.modelNo}-${p.color}`,
         item_name: p.description || `موديل ${p.modelNo}`,
         color: p.color,
         size: "ONE SIZE",
@@ -125,33 +126,35 @@ export async function GET(request: Request) {
         cur_qty: p.currentStock,
         group_name: p.group_name || "",
         kind_name: p.kind_name || "",
-        material: p.material || `${p.modelNo}${p.color}`,
+        material: p.material || "",
         images: p.image || "",
       }));
 
       return NextResponse.json({ success: true, data: exportData });
     }
 
+    // جلب المنتجات مرتبة بالأحدث
     const rawProducts = await prisma.product.findMany({
       where: whereConditions,
       orderBy: { id: "desc" },
     });
 
-    const groupedMap = new Map<string, GroupedProduct>();
+    const groupedMap = new Map<string, GroupedProductResponse>();
 
     for (const p of rawProducts) {
       const modelId = p.modelNo.trim();
       const colorName = p.color.trim();
-      const compositeKey = p.material || `${modelId}${colorName}`;
 
+      const hasRealImage = Boolean(p.image && p.image.trim() !== "");
       const fallbackImage = `${R2_PUBLIC_URL}/${modelId}-${colorName}.webp`;
-      const imageUrl = p.image
-        ? normalizePublicImageUrl(p.image) || fallbackImage
-        : fallbackImage;
+      const imageUrl =
+        (hasRealImage ? normalizePublicImageUrl(p.image) : null) ||
+        fallbackImage;
 
-      if (!groupedMap.has(modelId)) {
-        groupedMap.set(modelId, {
-          modelId,
+      let item = groupedMap.get(modelId);
+      if (!item) {
+        item = {
+          modelId: modelId,
           master_code: modelId,
           price: p.price,
           category: p.group_name || p.kind_name || p.material || "عام",
@@ -160,21 +163,23 @@ export async function GET(request: Request) {
           description: p.description || `موديل ${modelId}`,
           cur_qty: 0,
           variants: [],
-        });
+        };
+        groupedMap.set(modelId, item);
       }
 
-      const item = groupedMap.get(modelId)!;
       item.cur_qty += p.currentStock;
 
       item.variants.push({
         id: p.id,
         color: colorName,
-        imageUrl,
+        imageUrl: imageUrl,
+        hasImage: hasRealImage,
         cur_qty: p.currentStock,
         price: p.price,
-        material: compositeKey,
-        itemCode: compositeKey,
+        itemCode: `${modelId}-${colorName}`,
+        item_code: `${modelId}-${colorName}`,
         sizes: ["ONE SIZE"],
+        material: p.material,
       });
     }
 
@@ -198,19 +203,23 @@ export async function GET(request: Request) {
       },
     });
   } catch (error: unknown) {
-    const errorMsg = error instanceof Error ? error.message : "خطأ غير معروف";
+    const message =
+      error instanceof Error ? error.message : "حدث خطأ غير متوقع";
     return NextResponse.json(
-      { success: false, error: errorMsg },
+      { success: false, error: message },
       { status: 500 }
     );
   }
 }
 
-// 2️⃣ دالة POST
+// 2️⃣ دالة POST (إضافة وتحديث المنتجات من الداشبورد يدوياً أو عبر إكسيل)
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as BulkProductRow | BulkProductRow[];
+    const body = (await request.json()) as
+      | ProductPayloadInput
+      | ProductPayloadInput[];
 
+    // في حال الإضافة الجماعية عبر إكسيل
     if (Array.isArray(body)) {
       let count = 0;
       for (const item of body) {
@@ -218,37 +227,36 @@ export async function POST(request: Request) {
         const color = String(item.color || "افتراضي").trim();
         if (!modelNo) continue;
 
-        const finalMaterial = (item.material && String(item.material).trim() !== "")
-          ? String(item.material).trim()
-          : `${modelNo}${color}`.trim();
+        const price = parseFloat(String(item.out_price ?? item.price ?? 0)) || 0;
+        const qty = parseInt(String(item.cur_qty ?? item.stockQty ?? 0), 10) || 0;
 
         await prisma.product.upsert({
           where: {
             modelNo_color: {
-              modelNo,
-              color,
+              modelNo: modelNo,
+              color: color,
             },
           },
           update: {
             description: item.item_name || item.description,
-            price: parseFloat(String(item.out_price || item.price || 0)) || 0,
-            currentStock: parseInt(String(item.cur_qty || item.stockQty || 0), 10) || 0,
-            stockQty: parseInt(String(item.cur_qty || item.stockQty || 0), 10) || 0,
+            price: price,
+            currentStock: qty,
+            stockQty: qty,
             group_name: item.group_name || "",
             kind_name: item.kind_name || "",
-            material: finalMaterial,
+            material: item.material || "",
             image: item.images || item.image || "",
           },
           create: {
-            modelNo,
-            color,
+            modelNo: modelNo,
+            color: color,
             description: item.item_name || item.description || `موديل ${modelNo}`,
-            price: parseFloat(String(item.out_price || item.price || 0)) || 0,
-            currentStock: parseInt(String(item.cur_qty || item.stockQty || 0), 10) || 0,
-            stockQty: parseInt(String(item.cur_qty || item.stockQty || 0), 10) || 0,
+            price: price,
+            currentStock: qty,
+            stockQty: qty,
             group_name: item.group_name || "",
             kind_name: item.kind_name || "",
-            material: finalMaterial,
+            material: item.material || "",
             image: item.images || item.image || "",
           },
         });
@@ -257,13 +265,13 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         count,
-        message: `تم تحديث ${count} صنف موحد بنجاح`,
+        message: `تم رفع وتحديث ${count} صنف بنجاح`,
       });
     }
 
-    const singleItem = body;
-    const modelNo = String(singleItem.master_code || singleItem.modelNo || "").trim();
-    const color = String(singleItem.color || "افتراضي").trim();
+    // إضافة صنف فردي
+    const modelNo = String(body.master_code || body.modelNo || "").trim();
+    const color = String(body.color || "افتراضي").trim();
 
     if (!modelNo) {
       return NextResponse.json(
@@ -272,46 +280,46 @@ export async function POST(request: Request) {
       );
     }
 
-    const finalMaterial = (singleItem.material && String(singleItem.material).trim() !== "")
-      ? String(singleItem.material).trim()
-      : `${modelNo}${color}`.trim();
+    const price = parseFloat(String(body.out_price ?? body.price ?? 0)) || 0;
+    const qty = parseInt(String(body.cur_qty ?? body.stockQty ?? 0), 10) || 0;
 
     const createdProduct = await prisma.product.upsert({
       where: {
         modelNo_color: {
-          modelNo,
-          color,
+          modelNo: modelNo,
+          color: color,
         },
       },
       update: {
-        description: singleItem.item_name || singleItem.description,
-        price: parseFloat(String(singleItem.out_price || singleItem.price || 0)) || 0,
-        currentStock: parseInt(String(singleItem.cur_qty || singleItem.stockQty || 0), 10) || 0,
-        stockQty: parseInt(String(singleItem.cur_qty || singleItem.stockQty || 0), 10) || 0,
-        group_name: singleItem.group_name || "",
-        kind_name: singleItem.kind_name || "",
-        material: finalMaterial,
-        image: singleItem.images || singleItem.image || "",
+        description: body.item_name || body.description,
+        price: price,
+        currentStock: qty,
+        stockQty: qty,
+        group_name: body.group_name || "",
+        kind_name: body.kind_name || "",
+        material: body.material || "",
+        image: body.images || body.image || "",
       },
       create: {
-        modelNo,
-        color,
-        description: singleItem.item_name || singleItem.description || `موديل ${modelNo}`,
-        price: parseFloat(String(singleItem.out_price || singleItem.price || 0)) || 0,
-        currentStock: parseInt(String(singleItem.cur_qty || singleItem.stockQty || 0), 10) || 0,
-        stockQty: parseInt(String(singleItem.cur_qty || singleItem.stockQty || 0), 10) || 0,
-        group_name: singleItem.group_name || "",
-        kind_name: singleItem.kind_name || "",
-        material: finalMaterial,
-        image: singleItem.images || singleItem.image || "",
+        modelNo: modelNo,
+        color: color,
+        description: body.item_name || body.description || `موديل ${modelNo}`,
+        price: price,
+        currentStock: qty,
+        stockQty: qty,
+        group_name: body.group_name || "",
+        kind_name: body.kind_name || "",
+        material: body.material || "",
+        image: body.images || body.image || "",
       },
     });
 
     return NextResponse.json({ success: true, product: createdProduct });
   } catch (error: unknown) {
-    const errorMsg = error instanceof Error ? error.message : "خطأ غير معروف";
+    const message =
+      error instanceof Error ? error.message : "حدث خطأ غير متوقع";
     return NextResponse.json(
-      { success: false, error: errorMsg },
+      { success: false, error: message },
       { status: 500 }
     );
   }

@@ -73,15 +73,18 @@ export default function UploadDashboard() {
   // ==========================================
   // Helper Functions
   // ==========================================
-  const addToast = (message, type = "info") => {
-    const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => removeToast(id), 5000);
-  };
-
-  const removeToast = (id) => {
+  const removeToast = useCallback((id) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
+  }, []);
+
+  const addToast = useCallback(
+    (message, type = "info") => {
+      const id = Math.random().toString(36).substring(2, 9);
+      setToasts((prev) => [...prev, { id, message, type }]);
+      setTimeout(() => removeToast(id), 5000);
+    },
+    [removeToast]
+  );
 
   const formatBytes = (bytes, decimals = 2) => {
     if (bytes === 0) return "0 Bytes";
@@ -128,20 +131,173 @@ export default function UploadDashboard() {
   };
 
   const processFiles = (fileList) => {
-    const newFiles = Array.from(fileList).map((file) => ({
-      id: Math.random().toString(36).substring(2, 9),
-      file,
-      preview: URL.createObjectURL(file),
-      progress: 0,
-      status: "pending",
-      productCode: file.name.substring(0, file.name.lastIndexOf(".")),
-    }));
+    const newFiles = Array.from(fileList).map((file) => {
+      const dotIdx = file.name.lastIndexOf(".");
+      const productCode = dotIdx > 0 ? file.name.substring(0, dotIdx) : file.name;
+      return {
+        id: Math.random().toString(36).substring(2, 9),
+        file,
+        preview: URL.createObjectURL(file),
+        progress: 0,
+        status: "pending",
+        productCode,
+      };
+    });
 
     setFiles((prev) => [...prev, ...newFiles]);
   };
 
   const removeFile = (id) => {
     setFiles((prev) => prev.filter((f) => f.id !== id));
+  };
+
+  // ==========================================
+  // Tab 2 Logic: Manage & Gallery
+  // ==========================================
+  const fetchProducts = useCallback(
+    async (targetPage = 1) => {
+      setLoadingProducts(true);
+      try {
+        const queryParams = new URLSearchParams({
+          page: String(targetPage),
+          limit: String(pagination.limit),
+          search: searchTerm,
+          employee: "true",
+        });
+
+        const res = await fetch(`/api/products?${queryParams.toString()}`);
+        const data = await res.json();
+
+        if (data.success && data.products) {
+          console.log("📦 البيانات القادمة من الـ API:", data.products[0]);
+
+          const colorItems = [];
+
+          // تجميع حسب اللون
+          data.products.forEach((group) => {
+            if (group.variants && group.variants.length > 0) {
+              const colorMap = new Map();
+
+              group.variants.forEach((variant) => {
+                const color = variant.color || "افتراضي";
+                const variantCode =
+                  variant.item_code ||
+                  variant.itemCode ||
+                  (group.master_code ? `${group.master_code}-${color}` : "");
+                const variantHasImage =
+                  variant.hasImage !== undefined
+                    ? Boolean(variant.hasImage)
+                    : !!(
+                        variant.imageUrl &&
+                        !variant.imageUrl.includes("placeholder")
+                      );
+
+                if (!colorMap.has(color)) {
+                  colorMap.set(color, {
+                    uniqueKey: `${group.master_code}-${color}`,
+                    master_code: String(group.master_code || "N/A"),
+                    item_code: variantCode,
+                    imageFileName: variant.imageFileName || variantCode,
+                    description: group.description || group.item_name,
+                    color: color,
+                    imageUrl: variantHasImage ? variant.imageUrl : null,
+                    hasImage: variantHasImage,
+                    variants: [variant],
+                  });
+                } else {
+                  const existing = colorMap.get(color);
+                  existing.variants.push(variant);
+
+                  if (!existing.hasImage && variantHasImage && variant.imageUrl) {
+                    existing.imageUrl = variant.imageUrl;
+                    existing.hasImage = true;
+
+                    if (variantCode) {
+                      existing.item_code = variantCode;
+                    }
+                  }
+                }
+              });
+
+              colorMap.forEach((colorItem) => {
+                colorItems.push(colorItem);
+              });
+            } else {
+              const rawItemCode =
+                group.item_code || group.itemCode || group.modelId;
+              const itemCodeStr = rawItemCode ? String(rawItemCode) : "N/A";
+
+              colorItems.push({
+                uniqueKey: group.modelId,
+                id: group.modelId,
+                item_code: itemCodeStr,
+                master_code: String(group.master_code || "N/A"),
+                description: group.description || group.item_name,
+                color: "افتراضي",
+                imageUrl: null,
+                hasImage: false,
+                variants: [],
+              });
+            }
+          });
+
+          // تطبيق الفلتر
+          let filtered = colorItems;
+          if (filterType === "with-image") {
+            filtered = filtered.filter((item) => item.hasImage);
+          } else if (filterType === "no-image") {
+            filtered = filtered.filter((item) => !item.hasImage);
+          }
+
+          // تطبيق البحث
+          if (searchTerm) {
+            const term = searchTerm.toLowerCase();
+            filtered = filtered.filter(
+              (item) =>
+                item.item_code.toLowerCase().includes(term) ||
+                item.master_code.toLowerCase().includes(term) ||
+                (item.description || "").toLowerCase().includes(term) ||
+                (item.color || "").toLowerCase().includes(term)
+            );
+          }
+
+          setItems(filtered);
+          setPagination((prev) => ({
+            ...prev,
+            total: data.pagination?.totalProducts || 0,
+            totalPages: data.pagination?.totalPages || 1,
+          }));
+        }
+      } catch (err) {
+        console.error("Error fetching products:", err);
+        addToast("فشل في جلب المنتجات", "error");
+      } finally {
+        setLoadingProducts(false);
+      }
+    },
+    [searchTerm, filterType, pagination.limit, addToast]
+  );
+
+  useEffect(() => {
+    if (activeTab === "manage") {
+      fetchProducts(pagination.page);
+    }
+  }, [activeTab, pagination.page, fetchProducts]);
+
+  const handleSearchChange = (value) => {
+    setSearchTerm(value);
+    setPagination((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
+  };
+
+  const handleFilterChange = (type) => {
+    setFilterType(type);
+    setPagination((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
+  };
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= pagination.totalPages) {
+      setPagination((prev) => ({ ...prev, page: newPage }));
+    }
   };
 
   const uploadAllFiles = async () => {
@@ -190,19 +346,18 @@ export default function UploadDashboard() {
                 : f
             )
           );
-          
-          // تحديث المعرض بعد رفع الصورة مباشرة
+
           if (activeTab === "manage") {
-            setTimeout(() => fetchProducts(true), 1000);
+            setTimeout(() => fetchProducts(pagination.page), 1000);
           }
         } else {
           throw new Error(data.error || "فشل الرفع");
         }
-      } catch (error) {
+      } catch (err) {
         setFiles((prev) =>
           prev.map((f) =>
             f.id === fileObj.id
-              ? { ...f, status: "error", progress: 0, message: error.message }
+              ? { ...f, status: "error", progress: 0, message: err.message }
               : f
           )
         );
@@ -212,155 +367,6 @@ export default function UploadDashboard() {
     setIsGlobalUploading(false);
     addToast("اكتملت عملية المعالجة", "info");
   };
-
-  // ==========================================
-  // Tab 2 Logic: Manage & Gallery
-  // ==========================================
-
-  const fetchProducts = useCallback(
-    async (resetPage = false) => {
-      setLoadingProducts(true);
-      try {
-        const page = resetPage ? 1 : pagination.page;
-        const queryParams = new URLSearchParams({
-          page: page.toString(),
-          limit: pagination.limit.toString(),
-          search: searchTerm,
-          employee: "true",
-        });
-
-        const res = await fetch(`/api/products?${queryParams.toString()}`);
-        const data = await res.json();
-
-        if (data.success && data.products) {
-          console.log("📦 البيانات القادمة من الـ API:", data.products[0]);
-
-          const colorItems = [];
-
-          // تجميع حسب اللون
-          data.products.forEach((group) => {
-            if (group.variants && group.variants.length > 0) {
-              // إنشاء خريطة لتجميع الفاريانتات حسب اللون
-              const colorMap = new Map();
-              
-              group.variants.forEach((variant) => {
-                const color = variant.color || "افتراضي";
-                
-                if (!colorMap.has(color)) {
-                  // هذا أول مقاس لهذا اللون - ننشئ عنصر جديد للون
-                  // ✅ استخدام item_code الخاص باللون (من قاعدة البيانات)
-                  const itemCode = variant.item_code || "";
-                  
-                  colorMap.set(color, {
-                    uniqueKey: `${group.master_code}-${color}`,
-                    master_code: String(group.master_code || "N/A"),
-                    // ✅ هذا هو المفتاح: استخدام item_code الخاص باللون
-                    item_code: itemCode,
-                    // ✅ اسم ملف الصورة (الذي يجب أن يطابق item_code)
-                    imageFileName: variant.imageFileName || itemCode,
-                    description: group.description || group.item_name,
-                    color: color,
-                    imageUrl: variant.imageUrl && !variant.imageUrl.includes("placeholder")
-                      ? variant.imageUrl
-                      : null,
-                    hasImage: !!(variant.imageUrl && !variant.imageUrl.includes("placeholder")),
-                    // تخزين كل المقاسات تحت هذا اللون للرجوع إليها
-                    variants: [variant],
-                  });
-                } else {
-                  // أضف هذا المقاس إلى اللون الموجود
-                  const existing = colorMap.get(color);
-                  existing.variants.push(variant);
-                  
-                  // إذا كان هذا المقاس له صورة ولم يكن للون صورة بعد، استخدم صورته
-                  if (!existing.hasImage && variant.imageUrl && !variant.imageUrl.includes("placeholder")) {
-                    existing.imageUrl = variant.imageUrl;
-                    existing.hasImage = true;
-                    
-                    // تحديث item_code إذا كان الصورة تطابق مقاس معين
-                    if (variant.item_code) {
-                      existing.item_code = variant.item_code;
-                    }
-                  }
-                }
-              });
-              
-              // تحويل الخريطة إلى مصفوفة
-              colorMap.forEach((colorItem) => {
-                colorItems.push(colorItem);
-              });
-              
-            } else {
-              // التعامل مع المنتجات الفردية (بدون ألوان)
-              const rawItemCode = group.item_code || group.modelId;
-              const itemCodeStr = rawItemCode ? String(rawItemCode) : "N/A";
-
-              colorItems.push({
-                uniqueKey: group.modelId,
-                id: group.modelId,
-                item_code: itemCodeStr,
-                master_code: String(group.master_code || "N/A"),
-                description: group.description || group.item_name,
-                color: "افتراضي",
-                imageUrl: null,
-                hasImage: false,
-                variants: [],
-              });
-            }
-          });
-
-          // تطبيق الفلتر
-          let filtered = colorItems;
-          if (filterType === "with-image") {
-            filtered = filtered.filter((item) => item.hasImage);
-          } else if (filterType === "no-image") {
-            filtered = filtered.filter((item) => !item.hasImage);
-          }
-
-          // تطبيق البحث
-          if (searchTerm) {
-            filtered = filtered.filter((item) => 
-              item.item_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              item.master_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              item.description.toLowerCase().includes(searchTerm.toLowerCase())
-            );
-          }
-
-          setItems(filtered);
-          setPagination((prev) => ({
-            ...prev,
-            page,
-            total: data.pagination?.totalProducts || 0,
-            totalPages: data.pagination?.totalPages || 1,
-          }));
-        }
-      } catch (error) {
-        console.error("Error fetching products:", error);
-        addToast("فشل في جلب المنتجات", "error");
-      } finally {
-        setLoadingProducts(false);
-      }
-    },
-    [searchTerm, filterType, pagination.page, pagination.limit]
-  );
-
-  const handlePageChange = (newPage) => {
-    if (newPage >= 1 && newPage <= pagination.totalPages) {
-      setPagination((prev) => ({ ...prev, page: newPage }));
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === "manage") {
-      fetchProducts();
-    }
-  }, [activeTab, pagination.page]);
-
-  useEffect(() => {
-    if (activeTab === "manage") {
-      fetchProducts(true);
-    }
-  }, [searchTerm, filterType]);
 
   const handleDeleteImage = async (item) => {
     if (!item.imageUrl) return;
@@ -400,7 +406,7 @@ export default function UploadDashboard() {
       } else {
         addToast(result.error || "فشل الحذف", "error");
       }
-    } catch (error) {
+    } catch {
       addToast("حدث خطأ في الاتصال", "error");
     } finally {
       setLoadingActionId(null);
@@ -427,39 +433,42 @@ export default function UploadDashboard() {
         addToast(result.message, "success");
         setShowCleanupModal(false);
         setCleanupConfirmText("");
-        fetchProducts(true);
+        fetchProducts(pagination.page);
       } else {
         addToast(result.error || "فشل تنظيف الصور", "error");
         setShowCleanupModal(false);
         setCleanupConfirmText("");
       }
-    } catch (error) {
+    } catch {
       addToast("حدث خطأ في الاتصال", "error");
     } finally {
       setIsCleaning(false);
     }
   };
 
-  // استبدال صورة - مع الحفاظ على نفس الاسم (item_code)
+  // استبدال/رفع صورة - مع الحفاظ على التسمية المطابقة للون
   const handleReplaceImage = async (file, item) => {
-    const extension = file.name.substring(file.name.lastIndexOf("."));
+    const lastDot = file.name.lastIndexOf(".");
+    const extension = lastDot !== -1 ? file.name.substring(lastDot) : ".jpg";
 
-    // ✅ استخدام item_code الخاص باللون (الذي هو اسم الصورة على R2)
-    const codeToUse = item.item_code;
+    const fallbackCode =
+      item.master_code && item.master_code !== "N/A"
+        ? `${item.master_code}-${item.color}`
+        : "";
+    const codeToUse = item.item_code || fallbackCode;
 
     if (!codeToUse || codeToUse === "N/A" || codeToUse === "null") {
       addToast("لا يوجد كود صالح لهذا اللون لتسمية الصورة", "error");
       return;
     }
 
-    // ✅ تنظيف الكود واستخدامه كاسم للصورة
     const safeCode = String(codeToUse).trim();
-    // التأكد من أن الامتداد صحيح
-    const safeExtension = extension.startsWith('.') ? extension : `.${extension}`;
+    const safeExtension = extension.startsWith(".")
+      ? extension
+      : `.${extension}`;
     const newFileName = `${safeCode}${safeExtension}`;
 
-    console.log(`📤 جاري رفع الصورة بنفس الاسم: ${newFileName}`);
-    console.log(`📍 هذا سيحل محل الصورة القديمة على الرابط: ${item.imageUrl}`);
+    console.log(`📤 جاري رفع الصورة باسم: ${newFileName}`);
 
     const renamedFile = new File([file], newFileName, { type: file.type });
     const formData = new FormData();
@@ -478,7 +487,7 @@ export default function UploadDashboard() {
       if (result.success) {
         addToast(`تم تحديث صورة اللون ${item.color} بنجاح`, "success");
         const newImageUrl = result.image?.url || result.results?.[0]?.imageUrl;
-        
+
         if (newImageUrl) {
           setItems((prev) =>
             prev.map((p) => {
@@ -488,14 +497,13 @@ export default function UploadDashboard() {
               return p;
             })
           );
-          
-          // تحديث الصفحة بعد ثانيتين لرؤية التغييرات
-          setTimeout(() => fetchProducts(true), 2000);
+
+          setTimeout(() => fetchProducts(pagination.page), 2000);
         }
       } else {
         addToast(result.error || "فشل الرفع", "error");
       }
-    } catch (error) {
+    } catch {
       addToast("حدث خطأ أثناء الرفع", "error");
     } finally {
       setLoadingActionId(null);
@@ -579,9 +587,23 @@ export default function UploadDashboard() {
                 اسحب وأفلت الصور هنا
               </h3>
               <p className="text-gray-500 mb-6">
-                أو اضغط لاختيار الملفات من جهازك. <span className="font-bold text-blue-600">يجب تسمية الملفات بكود اللون بالضبط</span> (مثلاً: <code className="bg-yellow-100 px-2 py-1 rounded font-bold">3700.jpg</code> لكود اللون 3700).
+                أو اضغط لاختيار الملفات من جهازك.{" "}
+                <span className="font-bold text-blue-600">
+                  يجب تسمية الملفات بكود الموديل واللون أو الكي
+                </span>{" "}
+                (مثلاً:{" "}
+                <code className="bg-yellow-100 px-2 py-1 rounded font-bold">
+                  3700-أسود.jpg
+                </code>{" "}
+                أو{" "}
+                <code className="bg-yellow-100 px-2 py-1 rounded font-bold">
+                  3700.jpg
+                </code>
+                ).
                 <br />
-                <span className="text-sm text-green-600">✅ عند رفع صورة بنفس الاسم، ستستبدل الصورة القديمة تلقائياً</span>
+                <span className="text-sm text-green-600">
+                  ✅ يتم ربط الصورة تلقائياً بالصنف وتحديثها في المعرض والمتجر
+                </span>
               </p>
 
               <input
@@ -657,6 +679,7 @@ export default function UploadDashboard() {
 
                   <div className="flex gap-3">
                     <div className="w-20 h-20 relative flex-shrink-0 bg-gray-100 rounded-lg overflow-hidden border border-gray-100">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={file.preview}
                         alt="Preview"
@@ -742,7 +765,7 @@ export default function UploadDashboard() {
                     type="text"
                     placeholder="ابحث بكود اللون، الموديل، أو الاسم..."
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onChange={(e) => handleSearchChange(e.target.value)}
                     className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   />
                   <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
@@ -764,7 +787,7 @@ export default function UploadDashboard() {
 
                 <div className="flex gap-2 overflow-x-auto pb-1">
                   <button
-                    onClick={() => setFilterType("all")}
+                    onClick={() => handleFilterChange("all")}
                     className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap border ${
                       filterType === "all"
                         ? "bg-gray-800 text-white border-gray-800"
@@ -774,7 +797,7 @@ export default function UploadDashboard() {
                     الكل
                   </button>
                   <button
-                    onClick={() => setFilterType("with-image")}
+                    onClick={() => handleFilterChange("with-image")}
                     className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap border ${
                       filterType === "with-image"
                         ? "bg-green-600 text-white border-green-600"
@@ -784,7 +807,7 @@ export default function UploadDashboard() {
                     ✅ لديه صورة
                   </button>
                   <button
-                    onClick={() => setFilterType("no-image")}
+                    onClick={() => handleFilterChange("no-image")}
                     className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap border ${
                       filterType === "no-image"
                         ? "bg-red-600 text-white border-red-600"
@@ -807,6 +830,21 @@ export default function UploadDashboard() {
               </div>
             </div>
 
+            {cleanupReport && (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-800 flex flex-wrap gap-4 justify-between items-center">
+                <span>
+                  🧹 تقرير التنظيف: الإجمالي {cleanupReport.total} | تم حذف{" "}
+                  {cleanupReport.deleted} | تم الإبقاء على {cleanupReport.kept}
+                </span>
+                <button
+                  onClick={() => setCleanupReport(null)}
+                  className="text-xs font-bold underline"
+                >
+                  إخفاء
+                </button>
+              </div>
+            )}
+
             {loadingProducts ? (
               <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
                 {[...Array(8)].map((_, i) => (
@@ -825,6 +863,19 @@ export default function UploadDashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                   {items.map((item) => {
                     const isLoading = loadingActionId === item.uniqueKey;
+                    const sizesText =
+                      item.variants && item.variants.length > 0
+                        ? item.variants
+                            .map(
+                              (v) =>
+                                v.size ||
+                                (Array.isArray(v.sizes)
+                                  ? v.sizes.join("، ")
+                                  : "")
+                            )
+                            .filter(Boolean)
+                            .join("، ")
+                        : "";
 
                     return (
                       <div
@@ -838,6 +889,7 @@ export default function UploadDashboard() {
                         <div className="relative h-56 bg-gray-100 flex items-center justify-center group-hover:bg-gray-200 transition-colors">
                           {item.hasImage ? (
                             <div className="relative w-full h-full">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
                                 src={item.imageUrl}
                                 alt={item.description}
@@ -915,10 +967,7 @@ export default function UploadDashboard() {
                               </span>
                             </p>
                             <p>
-                              <strong>المقاسات:</strong>{" "}
-                              {item.variants && item.variants.length > 0 
-                                ? item.variants.map(v => v.size).filter(Boolean).join('، ') 
-                                : "لا يوجد"}
+                              <strong>المقاسات:</strong> {sizesText || "لا يوجد"}
                             </p>
                             <p>الكود الرئيسي: {item.master_code}</p>
                             {item.imageUrl && (
@@ -938,7 +987,7 @@ export default function UploadDashboard() {
                               onChange={(e) => {
                                 if (e.target.files && e.target.files[0]) {
                                   handleReplaceImage(e.target.files[0], item);
-                                  e.target.value = ""; // Reset
+                                  e.target.value = "";
                                 }
                               }}
                             />
@@ -1044,7 +1093,8 @@ export default function UploadDashboard() {
               </div>
 
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                اكتب كلمة <span className="font-bold text-red-600">نظف</span> للتأكيد
+                اكتب كلمة <span className="font-bold text-red-600">نظف</span>{" "}
+                للتأكيد
               </label>
               <input
                 type="text"

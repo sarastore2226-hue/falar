@@ -4,11 +4,9 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { v4 as uuidv4 } from "uuid";
 import sharp from "sharp";
-
-const prisma = new PrismaClient();
 
 // 🔥 إعداد اتصال R2 Cloudflare
 const r2 = new S3Client({
@@ -21,9 +19,9 @@ const r2 = new S3Client({
 });
 
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || "matgar1";
-const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL;
+const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "https://images.vooy.shop";
 
-// ✅ POST: رفع صورة جديدة
+// ✅ POST: رفع صورة جديدة وربطها بجدول Product الموحد
 export async function POST(request) {
   try {
     const formData = await request.formData();
@@ -43,11 +41,13 @@ export async function POST(request) {
         const buffer = Buffer.from(await file.arrayBuffer());
 
         const originalName = file.name;
+        const lastDotIndex = originalName.lastIndexOf(".");
         // استخراج الكود من اسم الملف (إزالة الامتداد)
-        const itemCodeFromFileName = originalName.substring(
-          0,
-          originalName.lastIndexOf(".")
-        );
+        const itemCodeFromFileName = (
+          lastDotIndex !== -1
+            ? originalName.substring(0, lastDotIndex)
+            : originalName
+        ).trim();
 
         // تنظيف اسم الملف للرفع على R2
         const safeFileName = originalName
@@ -80,50 +80,107 @@ export async function POST(request) {
         // نخزن نسخة 660 كالرابط الأساسي، وتُشتق منه بقية الأحجام في الواجهة.
         const imageUrl = `${R2_PUBLIC_URL}/${imageBaseKey}-660.webp`;
 
-        // 1. البحث عن المنتج المطابق لتحديث صورته
-        const product = await prisma.products.findFirst({
+        // 1. بناء احتمالات المطابقة من اسم الملف (مثلاً: 3700-أسود)
+        const modelColorPairs = [];
+        for (let i = 0; i < itemCodeFromFileName.length; i++) {
+          if (itemCodeFromFileName[i] === "-") {
+            const m = itemCodeFromFileName.slice(0, i).trim();
+            const c = itemCodeFromFileName.slice(i + 1).trim();
+            if (m && c) {
+              modelColorPairs.push({
+                modelNo: { equals: m, mode: "insensitive" },
+                color: { equals: c, mode: "insensitive" },
+              });
+            }
+          }
+        }
+
+        // البحث في الجدول الموحد Product (باللون المحدد أو material أو id)
+        let whereCondition = null;
+        let matchedProduct = await prisma.product.findFirst({
           where: {
             OR: [
-              { item_code: itemCodeFromFileName },
-              { master_code: itemCodeFromFileName },
+              ...modelColorPairs,
+              {
+                material: {
+                  equals: itemCodeFromFileName,
+                  mode: "insensitive",
+                },
+              },
+              { id: itemCodeFromFileName },
             ],
           },
         });
 
+        if (matchedProduct) {
+          whereCondition = {
+            modelNo: matchedProduct.modelNo,
+            color: matchedProduct.color,
+          };
+        } else {
+          // إذا رُفعت الصورة باسم الموديل فقط (مثل 3700.jpg) تُطبق على كل ألوان الموديل
+          const byModel = await prisma.product.findFirst({
+            where: {
+              modelNo: { equals: itemCodeFromFileName, mode: "insensitive" },
+            },
+          });
+
+          if (byModel) {
+            matchedProduct = byModel;
+            whereCondition = { modelNo: byModel.modelNo };
+          }
+        }
+
         let productInfo = null;
         let message = "✅ تم رفع الصورة (لم يتم العثور على منتج مطابق)";
 
-        if (product) {
-          let whereCondition = {};
+        if (whereCondition) {
+          const updateResult = await prisma.product.updateMany({
+            where: whereCondition,
+            data: { image: imageUrl },
+          });
 
-          if (product.master_code) {
-            whereCondition = {
-              master_code: product.master_code,
-              ...(product.color ? { color: product.color } : {}),
-            };
-          } else {
-            whereCondition = {
+          productInfo = {
+            code: `${matchedProduct.modelNo}-${matchedProduct.color}`,
+            name: matchedProduct.description,
+            color: matchedProduct.color,
+            master: matchedProduct.modelNo,
+          };
+
+          message = `✅ تم رفع الصورة وتطبيقها على ${updateResult.count} صنف`;
+        }
+
+        // تحديث احتياطي في الجدول القديم products إن وجد صف مطابق
+        try {
+          const legacyProduct = await prisma.products.findFirst({
+            where: {
               OR: [
                 { item_code: itemCodeFromFileName },
                 { master_code: itemCodeFromFileName },
               ],
-            };
-          }
-
-          // تنفيذ التحديث الجماعي
-          const updateResult = await prisma.products.updateMany({
-            where: whereCondition,
-            data: { images: imageUrl },
+            },
           });
 
-          productInfo = {
-            code: product.item_code || product.master_code,
-            name: product.item_name,
-            color: product.color,
-            master: product.master_code,
-          };
+          if (legacyProduct) {
+            const legacyWhere = legacyProduct.master_code
+              ? {
+                  master_code: legacyProduct.master_code,
+                  ...(legacyProduct.color ? { color: legacyProduct.color } : {}),
+                }
+              : {
+                  OR: [
+                    { item_code: itemCodeFromFileName },
+                    { master_code: itemCodeFromFileName },
+                  ],
+                };
 
-          message = `✅ تم رفع الصورة وتطبيقها على ${updateResult.count} منتج/مقاس`;
+            await prisma.products.updateMany({
+              where: legacyWhere,
+              data: { images: imageUrl },
+            });
+          }
+        } catch {
+          // تجاهل أي خطأ في الجدول القديم
         }
 
         results.push({
@@ -167,10 +224,10 @@ export async function POST(request) {
   }
 }
 
-// ✅ DELETE: حذف صورة
+// ✅ DELETE: حذف صورة من R2 ومن جدول Product الموحد
 export async function DELETE(request) {
   try {
-    const { imageUrl, productId } = await request.json();
+    const { imageUrl } = await request.json();
 
     if (!imageUrl) {
       return NextResponse.json(
@@ -182,17 +239,10 @@ export async function DELETE(request) {
     console.log("🗑️ جاري حذف الصورة:", imageUrl);
 
     // 1. استخراج مفتاح الملف (Key) من الرابط
-    // الرابط يكون عادة: https://pub-xxx.r2.dev/KEY-NAME
-    // نحتاج لاستخراج الجزء بعد الدومين
     let fileKey = imageUrl;
     if (imageUrl.startsWith("http")) {
       const urlParts = imageUrl.split("/");
-      // نأخذ آخر جزء (اسم الملف) أو المسار النسبي إذا كان داخل مجلدات
-      // في الـ POST أعلاه، نحن نرفع مباشرة للروت، لذا اسم الملف يكفي
       fileKey = urlParts[urlParts.length - 1];
-
-      // إذا كان لديك هيكلية مجلدات، يفضل استخدام:
-      // fileKey = imageUrl.replace(`${R2_PUBLIC_URL}/`, '');
     }
 
     // 2. الحذف من Cloudflare R2
@@ -218,15 +268,23 @@ export async function DELETE(request) {
         "⚠️ خطأ في حذف الملف من R2 (قد يكون غير موجود):",
         r2Error.message
       );
-      // نكمل العملية لحذف الرابط من قاعدة البيانات حتى لو فشل حذف الملف
     }
 
-    // 3. حذف الرابط من قاعدة البيانات
-    // نقوم بتصفير حقل الصور للمنتجات التي تحتوي على هذا الرابط
-    const updateResult = await prisma.products.updateMany({
-      where: { images: imageUrl },
-      data: { images: "" }, // أو null حسب تصميم قاعدة البيانات
+    // 3. حذف الرابط من جدول Product الموحد
+    const updateResult = await prisma.product.updateMany({
+      where: { image: imageUrl },
+      data: { image: null },
     });
+
+    // حذف احتياطي من الجدول القديم products إن وجد
+    try {
+      await prisma.products.updateMany({
+        where: { images: imageUrl },
+        data: { images: "" },
+      });
+    } catch {
+      // تجاهل
+    }
 
     return NextResponse.json({
       success: true,
