@@ -1,7 +1,6 @@
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "./prisma";
 import { normalizePublicImageUrl } from "./utils";
 
-const prisma = new PrismaClient();
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "https://images.vooy.shop";
 
 interface CategoryVariant {
@@ -67,20 +66,19 @@ export async function getCategoryData(categoryId: string) {
       (cat) => cat.sub === currentCategory.name && cat.image
     );
 
-    // 2. البحث في جدول Product الموحد بناءً على اسم التصنيف
+    const categoryName = currentCategory.name.trim();
+
+    // 2. البحث في جدول Product الموحد للعرض الافتراضي (العملاء: المتاح أو المفتوح)
     const productsRaw = await prisma.product.findMany({
       where: {
-        OR: [
-          { status: "OPEN" },
-          { currentStock: { gt: 0 } },
-        ],
+        OR: [{ status: "OPEN" }, { currentStock: { gt: 0 } }],
         AND: [
           {
             OR: [
-              { group_name: { contains: currentCategory.name, mode: "insensitive" } },
-              { kind_name: { contains: currentCategory.name, mode: "insensitive" } },
-              { description: { contains: currentCategory.name, mode: "insensitive" } },
-              { material: { contains: currentCategory.name, mode: "insensitive" } },
+              { group_name: { contains: categoryName, mode: "insensitive" } },
+              { kind_name: { contains: categoryName, mode: "insensitive" } },
+              { description: { contains: categoryName, mode: "insensitive" } },
+              { material: { contains: categoryName, mode: "insensitive" } },
             ],
           },
         ],
@@ -102,7 +100,7 @@ export async function getCategoryData(categoryId: string) {
           modelId,
           master_code: modelId,
           price: row.price || 0,
-          category: row.group_name || row.kind_name || row.material || currentCategory.name,
+          category: row.group_name || row.kind_name || row.material || categoryName,
           group_name: row.group_name || "",
           kind_name: row.kind_name || "",
           description: row.description || `موديل ${modelId}`,
@@ -115,7 +113,6 @@ export async function getCategoryData(categoryId: string) {
       const item = groupedByMasterCode.get(modelId)!;
       let variant = item.variants.find((v) => v.color === color);
 
-      // استخدام const وتجنب let لإرضاء prefer-const
       const fallbackUrl = `${R2_PUBLIC_URL}/${modelId}-${color}.webp`;
       const imageUrl = row.image
         ? normalizePublicImageUrl(row.image) || fallbackUrl

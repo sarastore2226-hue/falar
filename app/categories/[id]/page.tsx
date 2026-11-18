@@ -1,8 +1,7 @@
 import { getCategoryData } from "@/lib/get-category-data";
 import CategoryClient from "@/app/components/CategoryClient";
 
-export const revalidate = 60; // تحديث البيانات كل 60 ثانية
-export const dynamic = "force-static";
+export const dynamic = "force-dynamic";
 
 export default async function CategoryPage({
   params,
@@ -11,7 +10,7 @@ export default async function CategoryPage({
 }) {
   const { id } = await params;
 
-  // 1. جلب البيانات من السيرفر مباشرة (بسرعة البرق)
+  // 1. جلب البيانات من السيرفر مباشرة
   const data = await getCategoryData(id);
 
   // 2. تمرير البيانات للمكون العميل
