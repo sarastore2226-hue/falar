@@ -7,7 +7,6 @@ import Header from "../../components/Header";
 // Helper Components
 // ==========================================
 
-// 1. Toast Notification Component
 const ToastContainer = ({ toasts, removeToast }) => {
   return (
     <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 pointer-events-none">
@@ -50,6 +49,7 @@ export default function UploadDashboard() {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
   const [isGlobalUploading, setIsGlobalUploading] = useState(false);
+  const [bulkApplyToAllColors, setBulkApplyToAllColors] = useState(false);
 
   // --- State: Manage Tab ---
   const [searchTerm, setSearchTerm] = useState("");
@@ -69,6 +69,20 @@ export default function UploadDashboard() {
   const [cleanupConfirmText, setCleanupConfirmText] = useState("");
   const [isCleaning, setIsCleaning] = useState(false);
   const [cleanupReport, setCleanupReport] = useState(null);
+
+  // --- State: Image Linking Rules Tab ---
+  const [linkRules, setLinkRules] = useState([]);
+  const [loadingRules, setLoadingRules] = useState(false);
+  const [isSavingRule, setIsSavingRule] = useState(false);
+  const [isSyncingAllRules, setIsSyncingAllRules] = useState(false);
+  const [linkForm, setLinkForm] = useState({
+    rawInput: "",
+    name: "",
+    suffixMode: "AUTO",
+    fallbackAnyColor: true,
+    overwriteExisting: false,
+  });
+  const [linkPreview, setLinkPreview] = useState(null);
 
   // ==========================================
   // Helper Functions
@@ -169,11 +183,8 @@ export default function UploadDashboard() {
         const data = await res.json();
 
         if (data.success && data.products) {
-          console.log("📦 البيانات القادمة من الـ API:", data.products[0]);
-
           const colorItems = [];
 
-          // تجميع حسب اللون
           data.products.forEach((group) => {
             if (group.variants && group.variants.length > 0) {
               const colorMap = new Map();
@@ -241,7 +252,6 @@ export default function UploadDashboard() {
             }
           });
 
-          // تطبيق الفلتر
           let filtered = colorItems;
           if (filterType === "with-image") {
             filtered = filtered.filter((item) => item.hasImage);
@@ -249,7 +259,6 @@ export default function UploadDashboard() {
             filtered = filtered.filter((item) => !item.hasImage);
           }
 
-          // تطبيق البحث
           if (searchTerm) {
             const term = searchTerm.toLowerCase();
             filtered = filtered.filter(
@@ -283,6 +292,144 @@ export default function UploadDashboard() {
       fetchProducts(pagination.page);
     }
   }, [activeTab, pagination.page, fetchProducts]);
+
+  // ==========================================
+  // Tab 3 Logic: Image Linking Rules
+  // ==========================================
+  const fetchLinkRules = useCallback(async () => {
+    setLoadingRules(true);
+    try {
+      const res = await fetch("/api/image-links");
+      const data = await res.json();
+      if (data.success && Array.isArray(data.rules)) {
+        setLinkRules(data.rules);
+      }
+    } catch {
+      addToast("فشل جلب قواعد الربط", "error");
+    } finally {
+      setLoadingRules(false);
+    }
+  }, [addToast]);
+
+  useEffect(() => {
+    if (activeTab === "links") {
+      fetchLinkRules();
+    }
+  }, [activeTab, fetchLinkRules]);
+
+  useEffect(() => {
+    if (activeTab !== "links") return;
+    if (!linkForm.rawInput.trim()) {
+      setLinkPreview(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/image-links?preview=${encodeURIComponent(
+            linkForm.rawInput
+          )}&suffixMode=${linkForm.suffixMode}`
+        );
+        const data = await res.json();
+        if (data.success) {
+          setLinkPreview(data);
+        }
+      } catch {
+        setLinkPreview(null);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [activeTab, linkForm.rawInput, linkForm.suffixMode]);
+
+  const handleSaveLinkRule = async (e) => {
+    e.preventDefault();
+    if (!linkForm.rawInput.trim()) return;
+
+    setIsSavingRule(true);
+    try {
+      const res = await fetch("/api/image-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(linkForm),
+      });
+      const data = await res.json();
+      if (data.success) {
+        addToast(data.message || "تم حفظ قاعدة الربط وتطبيقها", "success");
+        setLinkForm({
+          rawInput: "",
+          name: "",
+          suffixMode: "AUTO",
+          fallbackAnyColor: true,
+          overwriteExisting: false,
+        });
+        setLinkPreview(null);
+        fetchLinkRules();
+      } else {
+        addToast(data.error || "فشل حفظ القاعدة", "error");
+      }
+    } catch {
+      addToast("حدث خطأ أثناء الحفظ", "error");
+    } finally {
+      setIsSavingRule(false);
+    }
+  };
+
+  const handleSyncRule = async (ruleId = null) => {
+    setIsSyncingAllRules(true);
+    try {
+      const res = await fetch("/api/image-links", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: ruleId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        addToast(data.message || "تمت المزامنة بنجاح", "success");
+      } else {
+        addToast(data.error || "فشلت المزامنة", "error");
+      }
+    } catch {
+      addToast("حدث خطأ أثناء المزامنة", "error");
+    } finally {
+      setIsSyncingAllRules(false);
+    }
+  };
+
+  const handleToggleRuleActive = async (rule) => {
+    try {
+      const res = await fetch("/api/image-links", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: rule.id, active: !rule.active }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLinkRules((prev) =>
+          prev.map((r) => (r.id === rule.id ? { ...r, active: !r.active } : r))
+        );
+      }
+    } catch {
+      addToast("تعذر تحديث حالة القاعدة", "error");
+    }
+  };
+
+  const handleDeleteRule = async (id) => {
+    if (!confirm("هل تريد حذف قاعدة الربط هذه؟ (لن يتم حذف الصور المربوطة حالياً)")) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/image-links?id=${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) {
+        addToast("تم حذف القاعدة", "success");
+        setLinkRules((prev) => prev.filter((r) => r.id !== id));
+      }
+    } catch {
+      addToast("فشل حذف القاعدة", "error");
+    }
+  };
 
   const handleSearchChange = (value) => {
     setSearchTerm(value);
@@ -320,6 +467,9 @@ export default function UploadDashboard() {
 
       const formData = new FormData();
       formData.append("file", fileObj.file);
+      if (bulkApplyToAllColors) {
+        formData.append("applyToAllColors", "true");
+      }
 
       try {
         setFiles((prev) =>
@@ -397,7 +547,7 @@ export default function UploadDashboard() {
         addToast("تم حذف الصورة بنجاح", "success");
         setItems((prev) =>
           prev.map((p) => {
-            if (p.uniqueKey === item.uniqueKey) {
+            if (p.uniqueKey === item.uniqueKey || p.imageUrl === item.imageUrl) {
               return { ...p, imageUrl: null, hasImage: false };
             }
             return p;
@@ -413,7 +563,6 @@ export default function UploadDashboard() {
     }
   };
 
-  // تنظيف الصور اليتيمة من مستودع R2
   const handleCleanup = async () => {
     if (cleanupConfirmText.trim() !== "نظف") {
       addToast("اكتب كلمة تأكيد بشكل صحيح", "error");
@@ -446,16 +595,20 @@ export default function UploadDashboard() {
     }
   };
 
-  // استبدال/رفع صورة - مع الحفاظ على التسمية المطابقة للون
-  const handleReplaceImage = async (file, item) => {
+  const handleReplaceImage = async (file, item, applyToAllColors = false) => {
     const lastDot = file.name.lastIndexOf(".");
     const extension = lastDot !== -1 ? file.name.substring(lastDot) : ".jpg";
+    const safeExtension = extension.startsWith(".")
+      ? extension
+      : `.${extension}`;
 
     const fallbackCode =
       item.master_code && item.master_code !== "N/A"
         ? `${item.master_code}-${item.color}`
         : "";
-    const codeToUse = item.item_code || fallbackCode;
+    const codeToUse = applyToAllColors
+      ? item.master_code
+      : item.item_code || fallbackCode;
 
     if (!codeToUse || codeToUse === "N/A" || codeToUse === "null") {
       addToast("لا يوجد كود صالح لهذا اللون لتسمية الصورة", "error");
@@ -463,16 +616,15 @@ export default function UploadDashboard() {
     }
 
     const safeCode = String(codeToUse).trim();
-    const safeExtension = extension.startsWith(".")
-      ? extension
-      : `.${extension}`;
     const newFileName = `${safeCode}${safeExtension}`;
-
-    console.log(`📤 جاري رفع الصورة باسم: ${newFileName}`);
-
     const renamedFile = new File([file], newFileName, { type: file.type });
+
     const formData = new FormData();
     formData.append("file", renamedFile);
+    if (applyToAllColors && item.master_code && item.master_code !== "N/A") {
+      formData.append("applyToAllColors", "true");
+      formData.append("targetModelNo", item.master_code);
+    }
 
     setLoadingActionId(item.uniqueKey);
 
@@ -485,20 +637,24 @@ export default function UploadDashboard() {
       const result = await res.json();
 
       if (result.success) {
-        addToast(`تم تحديث صورة اللون ${item.color} بنجاح`, "success");
+        addToast(result.message || "تم رفع الصورة بنجاح", "success");
         const newImageUrl = result.image?.url || result.results?.[0]?.imageUrl;
 
         if (newImageUrl) {
           setItems((prev) =>
             prev.map((p) => {
-              if (p.uniqueKey === item.uniqueKey) {
+              const matchesRow = applyToAllColors
+                ? p.master_code === item.master_code
+                : p.uniqueKey === item.uniqueKey;
+
+              if (matchesRow) {
                 return { ...p, imageUrl: newImageUrl, hasImage: true };
               }
               return p;
             })
           );
 
-          setTimeout(() => fetchProducts(pagination.page), 2000);
+          setTimeout(() => fetchProducts(pagination.page), 1500);
         }
       } else {
         addToast(result.error || "فشل الرفع", "error");
@@ -514,7 +670,7 @@ export default function UploadDashboard() {
   // Render UI
   // ==========================================
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className="min-h-screen bg-gray-50 pb-20" dir="rtl">
       <Header />
       <ToastContainer toasts={toasts} removeToast={removeToast} />
 
@@ -526,14 +682,14 @@ export default function UploadDashboard() {
               مركز رفع وإدارة الصور
             </h1>
             <p className="text-gray-600 mt-1">
-              إدارة الصور المستضافة على Cloudflare R2 - كل لون له صورة واحدة فقط
+              رفع الصور على Cloudflare R2 وربط صور المراحل تلقائياً بين الموديلات
             </p>
           </div>
 
-          <div className="bg-white p-1 rounded-xl shadow-sm border border-gray-200 inline-flex">
+          <div className="bg-white p-1 rounded-xl shadow-sm border border-gray-200 inline-flex flex-wrap gap-1">
             <button
               onClick={() => setActiveTab("upload")}
-              className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
+              className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
                 activeTab === "upload"
                   ? "bg-blue-600 text-white shadow-md"
                   : "text-gray-600 hover:bg-gray-50"
@@ -543,7 +699,7 @@ export default function UploadDashboard() {
             </button>
             <button
               onClick={() => setActiveTab("manage")}
-              className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
+              className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
                 activeTab === "manage"
                   ? "bg-blue-600 text-white shadow-md"
                   : "text-gray-600 hover:bg-gray-50"
@@ -551,12 +707,41 @@ export default function UploadDashboard() {
             >
               🖼️ المعرض والإدارة
             </button>
+            <button
+              onClick={() => setActiveTab("links")}
+              className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                activeTab === "links"
+                  ? "bg-indigo-600 text-white shadow-md"
+                  : "text-indigo-700 hover:bg-indigo-50"
+              }`}
+            >
+              🔗 ربط الصور (المراحل)
+            </button>
           </div>
         </div>
 
         {/* ======================= TAB 1: UPLOAD ======================= */}
         {activeTab === "upload" && (
           <div className="space-y-6 animate-fadeIn">
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={bulkApplyToAllColors}
+                  onChange={(e) => setBulkApplyToAllColors(e.target.checked)}
+                  className="w-5 h-5 text-purple-600 rounded cursor-pointer"
+                />
+                <div>
+                  <span className="font-bold text-purple-900 text-sm block">
+                    📢 وضع الصور المجمعة (تطبيق الصورة على كل ألوان الموديل)
+                  </span>
+                  <span className="text-xs text-purple-700">
+                    فعّله إذا كانت الصور المرفوعة مجمعة وتريد وضع كل صورة على جميع ألوان موديلها (مع تطبيق قواعد الربط التلقائي للمراحل إن وجدت).
+                  </span>
+                </div>
+              </label>
+            </div>
+
             <div
               onDragEnter={handleDragEnter}
               onDragOver={handleDragOver}
@@ -587,22 +772,17 @@ export default function UploadDashboard() {
                 اسحب وأفلت الصور هنا
               </h3>
               <p className="text-gray-500 mb-6">
-                أو اضغط لاختيار الملفات من جهازك.{" "}
-                <span className="font-bold text-blue-600">
-                  يجب تسمية الملفات بكود الموديل واللون أو الكي
-                </span>{" "}
-                (مثلاً:{" "}
+                للون محدد سمِّ الصورة:{" "}
                 <code className="bg-yellow-100 px-2 py-1 rounded font-bold">
-                  3700-أسود.jpg
+                  3700-أسود.webp
                 </code>{" "}
-                أو{" "}
-                <code className="bg-yellow-100 px-2 py-1 rounded font-bold">
-                  3700.jpg
+                — ولصورة مجمعة لكل ألوان الموديل:{" "}
+                <code className="bg-purple-100 text-purple-900 px-2 py-1 rounded font-bold">
+                  3700.webp
                 </code>
-                ).
                 <br />
                 <span className="text-sm text-green-600">
-                  ✅ يتم ربط الصورة تلقائياً بالصنف وتحديثها في المعرض والمتجر
+                  ✅ يتم ربط الصورة تلقائياً بالصنف وبأي موديل شقيق مُعرَّف في تبويب &quot;ربط الصور&quot;
                 </span>
               </p>
 
@@ -649,7 +829,7 @@ export default function UploadDashboard() {
                         جاري الرفع...
                       </>
                     ) : (
-                      <>🚀 بدء الرفع (الملفات التي لها نفس الاسم ستستبدل)</>
+                      <>🚀 بدء الرفع</>
                     )}
                   </button>
                 </div>
@@ -698,7 +878,7 @@ export default function UploadDashboard() {
                         {formatBytes(file.file.size)}
                         {file.productCode && (
                           <span className="block text-blue-600 mt-0.5 font-mono font-bold">
-                            كود اللون: {file.productCode}
+                            الكود: {file.productCode}
                           </span>
                         )}
                       </p>
@@ -977,38 +1157,76 @@ export default function UploadDashboard() {
                             )}
                           </div>
 
-                          <div className="relative">
-                            <input
-                              type="file"
-                              accept="image/*"
-                              id={`upload-${item.uniqueKey}`}
-                              className="hidden"
-                              disabled={isLoading}
-                              onChange={(e) => {
-                                if (e.target.files && e.target.files[0]) {
-                                  handleReplaceImage(e.target.files[0], item);
-                                  e.target.value = "";
-                                }
-                              }}
-                            />
-                            <label
-                              htmlFor={`upload-${item.uniqueKey}`}
-                              className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold cursor-pointer transition-all ${
-                                item.hasImage
-                                  ? "bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200"
-                                  : "bg-green-600 text-white hover:bg-green-700 shadow-md hover:shadow-lg"
-                              } ${
-                                isLoading ? "opacity-50 cursor-not-allowed" : ""
-                              }`}
-                            >
-                              {isLoading ? (
-                                "جاري الرفع..."
-                              ) : item.hasImage ? (
-                                <>🔄 استبدال (نفس الاسم: {item.item_code})</>
-                              ) : (
-                                <>📤 رفع صورة (الاسم: {item.item_code})</>
-                              )}
-                            </label>
+                          <div className="space-y-2">
+                            <div className="relative">
+                              <input
+                                type="file"
+                                accept="image/*"
+                                id={`upload-${item.uniqueKey}`}
+                                className="hidden"
+                                disabled={isLoading}
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files[0]) {
+                                    handleReplaceImage(
+                                      e.target.files[0],
+                                      item,
+                                      false
+                                    );
+                                    e.target.value = "";
+                                  }
+                                }}
+                              />
+                              <label
+                                htmlFor={`upload-${item.uniqueKey}`}
+                                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold cursor-pointer transition-all ${
+                                  item.hasImage
+                                    ? "bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200"
+                                    : "bg-green-600 text-white hover:bg-green-700 shadow-md hover:shadow-lg"
+                                } ${
+                                  isLoading ? "opacity-50 cursor-not-allowed" : ""
+                                }`}
+                              >
+                                {isLoading ? (
+                                  "جاري الرفع..."
+                                ) : item.hasImage ? (
+                                  <>🔄 استبدال ({item.color})</>
+                                ) : (
+                                  <>📤 رفع للون ({item.color})</>
+                                )}
+                              </label>
+                            </div>
+
+                            {item.master_code && item.master_code !== "N/A" && (
+                              <div className="relative">
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  id={`upload-all-${item.uniqueKey}`}
+                                  className="hidden"
+                                  disabled={isLoading}
+                                  onChange={(e) => {
+                                    if (e.target.files && e.target.files[0]) {
+                                      handleReplaceImage(
+                                        e.target.files[0],
+                                        item,
+                                        true
+                                      );
+                                      e.target.value = "";
+                                    }
+                                  }}
+                                />
+                                <label
+                                  htmlFor={`upload-all-${item.uniqueKey}`}
+                                  className={`w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold cursor-pointer transition-all bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 ${
+                                    isLoading
+                                      ? "opacity-50 cursor-not-allowed"
+                                      : ""
+                                  }`}
+                                >
+                                  📢 تعميم صورة على كل ألوان {item.master_code}
+                                </label>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1059,6 +1277,272 @@ export default function UploadDashboard() {
                 </p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ======================= TAB 3: IMAGE LINKING RULES ======================= */}
+        {activeTab === "links" && (
+          <div className="space-y-6 animate-fadeIn">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* نموذج إضافة قاعدة ربط جديدة */}
+              <form
+                onSubmit={handleSaveLinkRule}
+                className="bg-white rounded-2xl shadow-sm border border-indigo-100 p-6 space-y-4 h-fit"
+              >
+                <div>
+                  <h2 className="text-xl font-bold text-indigo-900">
+                    🔗 إضافة قاعدة ربط صور جديدة
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                    أدخل الأرقام الأم لمراحل الموديل (بيبي / وسط / محير)، وسيأخذ أي
+                    موديل منها رابط الصورة المتاح في أي مرحلة أخرى تلقائياً.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    الأرقام الأم الأولية للمراحل *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={linkForm.rawInput}
+                    onChange={(e) =>
+                      setLinkForm({ ...linkForm, rawInput: e.target.value })
+                    }
+                    placeholder="مثال: 300, 400, 500 أو 3700, 4700, 5700 أو w1000, w2000"
+                    className="w-full p-3 border border-gray-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    يمكنك الفصل بفاصلة أو <b>و</b> أو مسافة (مثال: <code>600 و 700</code> أو <code>3700, 4700, 5700</code> أو <code>w1099, w2099</code>)
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    طول الخانات المتغيرة
+                  </label>
+                  <select
+                    value={linkForm.suffixMode}
+                    onChange={(e) =>
+                      setLinkForm({ ...linkForm, suffixMode: e.target.value })
+                    }
+                    className="w-full p-2.5 border border-gray-300 rounded-xl text-sm font-semibold bg-white"
+                  >
+                    <option value="AUTO">
+                      تلقائي حسب الأصفار (موصى به: 300↔400، 3700↔4700، w1000↔w2000)
+                    </option>
+                    <option value="2">آخر رقمين فقط (00 إلى 99)</option>
+                    <option value="3">آخر 3 أرقام (000 إلى 999)</option>
+                    <option value="0">تطابق حرفي للأكواد فقط (بدون نطاق)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    اسم توضيحي للقاعدة (اختياري)
+                  </label>
+                  <input
+                    type="text"
+                    value={linkForm.name}
+                    onChange={(e) =>
+                      setLinkForm({ ...linkForm, name: e.target.value })
+                    }
+                    placeholder="مثال: مراحل الجيبات 3700-4700-5700"
+                    className="w-full p-2.5 border border-gray-300 rounded-xl text-sm"
+                  />
+                </div>
+
+                <div className="space-y-2 pt-1">
+                  <label className="flex items-start gap-2 text-xs font-medium text-gray-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={linkForm.fallbackAnyColor}
+                      onChange={(e) =>
+                        setLinkForm({
+                          ...linkForm,
+                          fallbackAnyColor: e.target.checked,
+                        })
+                      }
+                      className="mt-0.5 w-4 h-4 text-indigo-600 rounded"
+                    />
+                    <span>
+                      إذا اختلف اسم اللون، استخدم أول صورة متوفرة للموديل المرتبط كبديل
+                    </span>
+                  </label>
+
+                  <label className="flex items-start gap-2 text-xs font-medium text-gray-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={linkForm.overwriteExisting}
+                      onChange={(e) =>
+                        setLinkForm({
+                          ...linkForm,
+                          overwriteExisting: e.target.checked,
+                        })
+                      }
+                      className="mt-0.5 w-4 h-4 text-indigo-600 rounded"
+                    />
+                    <span>
+                      تحديث الأصناف حتى لو كان لديها صورة سابقة
+                    </span>
+                  </label>
+                </div>
+
+                {/* معاينة حية */}
+                {linkPreview && (
+                  <div
+                    className={`rounded-xl p-3 text-xs border ${
+                      linkPreview.valid
+                        ? "bg-indigo-50 border-indigo-200 text-indigo-900"
+                        : "bg-red-50 border-red-200 text-red-700"
+                    }`}
+                  >
+                    {linkPreview.valid ? (
+                      <div className="space-y-1">
+                        <div className="font-bold">
+                          ✅ مثال التطابق:{` `}
+                          <span className="font-mono" dir="ltr">
+                            {linkPreview.exampleGroup?.join(" ↔ ")}
+                          </span>
+                        </div>
+                        <div>
+                          تم العثور على{" "}
+                          <b>{linkPreview.matchedModelsCount}</b> موديل مطابق في
+                          قاعدة البيانات (منهم{" "}
+                          <b>{linkPreview.modelsWithoutImageCount}</b> بدون
+                          صورة حالياً).
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="font-bold">⚠️ {linkPreview.error}</div>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isSavingRule || !linkPreview?.valid}
+                  className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md transition-all disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  {isSavingRule
+                    ? "جاري الحفظ والتطبيق..."
+                    : "🔗 حفظ القاعدة وتطبيق الربط الآن"}
+                </button>
+              </form>
+
+              {/* قائمة القواعد المحفوظة */}
+              <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-4">
+                <div className="flex flex-wrap justify-between items-center gap-3 border-b border-gray-100 pb-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">
+                      قواعد الربط المحفوظة ({linkRules.length})
+                    </h3>
+                    <p className="text-xs text-gray-500">
+                      تعمل هذه القواعد تلقائياً عند رفع أي صورة جديدة في أي وقت
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isSyncingAllRules || linkRules.length === 0}
+                    onClick={() => handleSyncRule(null)}
+                    className="px-4 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold shadow disabled:bg-gray-300"
+                  >
+                    {isSyncingAllRules
+                      ? "جاري المزامنة..."
+                      : "🔄 مزامنة وتطبيق الكل الآن"}
+                  </button>
+                </div>
+
+                {loadingRules ? (
+                  <p className="text-center py-8 text-gray-500 text-sm">
+                    جاري تحميل القواعد...
+                  </p>
+                ) : linkRules.length === 0 ? (
+                  <div className="text-center py-12 text-gray-400 border border-dashed border-gray-200 rounded-xl">
+                    <div className="text-4xl mb-2">🔗</div>
+                    <p className="font-bold text-sm">
+                      لم تُضف أي قواعد ربط بعد
+                    </p>
+                    <p className="text-xs mt-1">
+                      أضف أول قاعدة من النموذج (مثل: 300, 400, 500 أو 3700, 4700, 5700)
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {linkRules.map((rule) => (
+                      <div
+                        key={rule.id}
+                        className={`p-4 rounded-xl border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 ${
+                          rule.active
+                            ? "bg-white border-indigo-100"
+                            : "bg-gray-50 border-gray-200 opacity-70"
+                        }`}
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-gray-900">
+                              {rule.name || rule.raw_input}
+                            </span>
+                            <span
+                              className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
+                                rule.active
+                                  ? "bg-green-100 text-green-700"
+                                  : "bg-gray-200 text-gray-600"
+                              }`}
+                            >
+                              {rule.active ? "فعالة تلقائياً" : "متوقفة"}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-500 flex flex-wrap gap-2 items-center">
+                            <span>الإدخال: {rule.raw_input}</span>
+                            <span>•</span>
+                            <span>
+                              البادئات:{" "}
+                              <code className="bg-indigo-50 text-indigo-800 px-1.5 py-0.5 rounded font-mono">
+                                {(rule.prefixesList || []).join(" , ")}
+                              </code>
+                            </span>
+                            <span>•</span>
+                            <span>
+                              الخانات المتغيرة:{" "}
+                              {rule.suffix_length === 0
+                                ? "مطابقة تامة"
+                                : `${rule.suffix_length} خانات`}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            disabled={isSyncingAllRules}
+                            onClick={() => handleSyncRule(rule.id)}
+                            className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold"
+                          >
+                            🔄 مزامنة
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleRuleActive(rule)}
+                            className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold"
+                          >
+                            {rule.active ? "إيقاف" : "تفعيل"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRule(rule.id)}
+                            className="px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

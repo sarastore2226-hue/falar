@@ -5,10 +5,10 @@ import {
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 import { prisma } from "@/lib/prisma";
+import { findLinkedModelsForModel, normalizeColorToken } from "@/lib/image-linking";
 import { v4 as uuidv4 } from "uuid";
 import sharp from "sharp";
 
-// 🔥 إعداد اتصال R2 Cloudflare
 const r2 = new S3Client({
   region: "auto",
   endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
@@ -21,11 +21,20 @@ const r2 = new S3Client({
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || "matgar1";
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "https://images.vooy.shop";
 
-// ✅ POST: رفع صورة جديدة وربطها بجدول Product الموحد
+function normalizeFileToken(str) {
+  return String(str || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[*?:/\\|<>"]/g, "_");
+}
+
+// ✅ POST: رفع صورة جديدة وربطها بجدول Product الموحد + الموديلات المرتبطة بقواعد الربط
 export async function POST(request) {
   try {
     const formData = await request.formData();
     const files = formData.getAll("file");
+    const applyToAllColors = formData.get("applyToAllColors") === "true";
+    const targetModelNo = String(formData.get("targetModelNo") || "").trim();
 
     if (!files || files.length === 0) {
       return NextResponse.json(
@@ -33,6 +42,10 @@ export async function POST(request) {
         { status: 400 }
       );
     }
+
+    const activeLinkRules = await prisma.image_link_rules.findMany({
+      where: { active: true },
+    });
 
     const results = [];
 
@@ -42,14 +55,12 @@ export async function POST(request) {
 
         const originalName = file.name;
         const lastDotIndex = originalName.lastIndexOf(".");
-        // استخراج الكود من اسم الملف (إزالة الامتداد)
         const itemCodeFromFileName = (
           lastDotIndex !== -1
             ? originalName.substring(0, lastDotIndex)
             : originalName
         ).trim();
 
-        // تنظيف اسم الملف للرفع على R2
         const safeFileName = originalName
           .replace(/\s+/g, "-")
           .replace(/[^a-zA-Z0-9.\-_]/g, "");
@@ -77,80 +88,188 @@ export async function POST(request) {
           })
         );
 
-        // نخزن نسخة 660 كالرابط الأساسي، وتُشتق منه بقية الأحجام في الواجهة.
         const imageUrl = `${R2_PUBLIC_URL}/${imageBaseKey}-660.webp`;
 
-        // 1. بناء احتمالات المطابقة من اسم الملف (مثلاً: 3700-أسود)
-        const modelColorPairs = [];
-        for (let i = 0; i < itemCodeFromFileName.length; i++) {
-          if (itemCodeFromFileName[i] === "-") {
-            const m = itemCodeFromFileName.slice(0, i).trim();
-            const c = itemCodeFromFileName.slice(i + 1).trim();
-            if (m && c) {
-              modelColorPairs.push({
-                modelNo: { equals: m, mode: "insensitive" },
-                color: { equals: c, mode: "insensitive" },
-              });
+        let whereCondition = null;
+        let matchedProduct = null;
+
+        if (applyToAllColors) {
+          const modelCandidates = [
+            targetModelNo,
+            itemCodeFromFileName,
+            itemCodeFromFileName.split(/[#\-_\s]/)[0],
+          ].filter(Boolean);
+
+          for (const candidate of modelCandidates) {
+            const foundByModel = await prisma.product.findFirst({
+              where: {
+                modelNo: { equals: candidate.trim(), mode: "insensitive" },
+              },
+            });
+            if (foundByModel) {
+              matchedProduct = foundByModel;
+              whereCondition = { modelNo: foundByModel.modelNo };
+              break;
             }
           }
-        }
-
-        // البحث في الجدول الموحد Product (باللون المحدد أو material أو id)
-        let whereCondition = null;
-        let matchedProduct = await prisma.product.findFirst({
-          where: {
-            OR: [
-              ...modelColorPairs,
-              {
-                material: {
-                  equals: itemCodeFromFileName,
-                  mode: "insensitive",
-                },
-              },
-              { id: itemCodeFromFileName },
-            ],
-          },
-        });
-
-        if (matchedProduct) {
-          whereCondition = {
-            modelNo: matchedProduct.modelNo,
-            color: matchedProduct.color,
-          };
         } else {
-          // إذا رُفعت الصورة باسم الموديل فقط (مثل 3700.jpg) تُطبق على كل ألوان الموديل
-          const byModel = await prisma.product.findFirst({
+          const modelColorPairs = [];
+          const splitPairsRaw = [];
+          for (let i = 0; i < itemCodeFromFileName.length; i++) {
+            if (itemCodeFromFileName[i] === "-") {
+              const m = itemCodeFromFileName.slice(0, i).trim();
+              const c = itemCodeFromFileName.slice(i + 1).trim();
+              if (m && c) {
+                splitPairsRaw.push({ m, c });
+                modelColorPairs.push({
+                  modelNo: { equals: m, mode: "insensitive" },
+                  color: { equals: c, mode: "insensitive" },
+                });
+              }
+            }
+          }
+
+          matchedProduct = await prisma.product.findFirst({
             where: {
-              modelNo: { equals: itemCodeFromFileName, mode: "insensitive" },
+              OR: [
+                ...modelColorPairs,
+                {
+                  material: {
+                    equals: itemCodeFromFileName,
+                    mode: "insensitive",
+                  },
+                },
+                { id: itemCodeFromFileName },
+              ],
             },
           });
 
-          if (byModel) {
-            matchedProduct = byModel;
-            whereCondition = { modelNo: byModel.modelNo };
+          if (!matchedProduct && splitPairsRaw.length > 0) {
+            const candidateModels = await prisma.product.findMany({
+              where: {
+                OR: splitPairsRaw.map((p) => ({
+                  modelNo: { equals: p.m, mode: "insensitive" },
+                })),
+              },
+            });
+
+            matchedProduct =
+              candidateModels.find((prod) =>
+                splitPairsRaw.some(
+                  (pair) =>
+                    prod.modelNo.trim().toLowerCase() ===
+                      pair.m.toLowerCase() &&
+                    normalizeFileToken(prod.color) ===
+                      normalizeFileToken(pair.c)
+                )
+              ) || null;
+          }
+
+          if (matchedProduct) {
+            whereCondition = {
+              modelNo: matchedProduct.modelNo,
+              color: matchedProduct.color,
+            };
+          } else {
+            const byModel = await prisma.product.findFirst({
+              where: {
+                modelNo: { equals: itemCodeFromFileName, mode: "insensitive" },
+              },
+            });
+
+            if (byModel) {
+              matchedProduct = byModel;
+              whereCondition = { modelNo: byModel.modelNo };
+            }
           }
         }
 
         let productInfo = null;
         let message = "✅ تم رفع الصورة (لم يتم العثور على منتج مطابق)";
 
-        if (whereCondition) {
+        if (whereCondition && matchedProduct) {
+          const previousImageUrl = matchedProduct.image || null;
+
           const updateResult = await prisma.product.updateMany({
             where: whereCondition,
             data: { image: imageUrl },
           });
 
+          let totalUpdated = updateResult.count;
+          const linkedAppliedModels = [];
+
+          // تطبيق قواعد ربط المراحل تلقائياً على الموديلات الشقيقة
+          if (activeLinkRules.length > 0) {
+            const { siblingModels, fallbackAnyColor } = findLinkedModelsForModel(
+              matchedProduct.modelNo,
+              activeLinkRules
+            );
+
+            const otherSiblings = siblingModels.filter(
+              (m) => m.toLowerCase() !== matchedProduct.modelNo.toLowerCase()
+            );
+
+            if (otherSiblings.length > 0) {
+              const siblingRows = await prisma.product.findMany({
+                where: {
+                  OR: otherSiblings.map((m) => ({
+                    modelNo: { equals: m, mode: "insensitive" },
+                  })),
+                },
+                select: { id: true, modelNo: true, color: true, image: true },
+              });
+
+              const targetColorNorm = whereCondition.color
+                ? normalizeColorToken(whereCondition.color)
+                : null;
+
+              const idsToUpdate = [];
+              for (const row of siblingRows) {
+                const canOverwrite =
+                  !row.image ||
+                  row.image.trim() === "" ||
+                  (previousImageUrl && row.image === previousImageUrl);
+                if (!canOverwrite) continue;
+
+                const isColorMatch =
+                  !targetColorNorm ||
+                  fallbackAnyColor ||
+                  normalizeColorToken(row.color) === targetColorNorm;
+
+                if (isColorMatch) {
+                  idsToUpdate.push(row.id);
+                  if (!linkedAppliedModels.includes(row.modelNo)) {
+                    linkedAppliedModels.push(row.modelNo);
+                  }
+                }
+              }
+
+              if (idsToUpdate.length > 0) {
+                const linkedRes = await prisma.product.updateMany({
+                  where: { id: { in: idsToUpdate } },
+                  data: { image: imageUrl },
+                });
+                totalUpdated += linkedRes.count;
+              }
+            }
+          }
+
           productInfo = {
-            code: `${matchedProduct.modelNo}-${matchedProduct.color}`,
+            code: whereCondition.color
+              ? `${matchedProduct.modelNo}-${matchedProduct.color}`
+              : matchedProduct.modelNo,
             name: matchedProduct.description,
-            color: matchedProduct.color,
+            color: whereCondition.color ? matchedProduct.color : "كل الألوان",
             master: matchedProduct.modelNo,
           };
 
-          message = `✅ تم رفع الصورة وتطبيقها على ${updateResult.count} صنف`;
+          message =
+            linkedAppliedModels.length > 0
+              ? `✅ تم رفع الصورة وتطبيقها على ${totalUpdated} صنف (شاملاً الموديلات المرتبطة: ${linkedAppliedModels.join(", ")})`
+              : `✅ تم رفع الصورة وتطبيقها على ${totalUpdated} صنف`;
         }
 
-        // تحديث احتياطي في الجدول القديم products إن وجد صف مطابق
+        // تحديث احتياطي في الجدول القديم products إن وجد
         try {
           const legacyProduct = await prisma.products.findFirst({
             where: {
@@ -165,7 +284,9 @@ export async function POST(request) {
             const legacyWhere = legacyProduct.master_code
               ? {
                   master_code: legacyProduct.master_code,
-                  ...(legacyProduct.color ? { color: legacyProduct.color } : {}),
+                  ...(!applyToAllColors && legacyProduct.color
+                    ? { color: legacyProduct.color }
+                    : {}),
                 }
               : {
                   OR: [
@@ -180,7 +301,7 @@ export async function POST(request) {
             });
           }
         } catch {
-          // تجاهل أي خطأ في الجدول القديم
+          // تجاهل
         }
 
         results.push({
@@ -236,16 +357,12 @@ export async function DELETE(request) {
       );
     }
 
-    console.log("🗑️ جاري حذف الصورة:", imageUrl);
-
-    // 1. استخراج مفتاح الملف (Key) من الرابط
     let fileKey = imageUrl;
     if (imageUrl.startsWith("http")) {
       const urlParts = imageUrl.split("/");
       fileKey = urlParts[urlParts.length - 1];
     }
 
-    // 2. الحذف من Cloudflare R2
     try {
       const variantMatch = fileKey.match(/^(.*)-(320|660|1024)\.webp$/i);
       const fileKeys = variantMatch
@@ -262,21 +379,15 @@ export async function DELETE(request) {
           )
         )
       );
-      console.log("✅ تم حذف نسخ الصورة من R2:", fileKeys);
     } catch (r2Error) {
-      console.error(
-        "⚠️ خطأ في حذف الملف من R2 (قد يكون غير موجود):",
-        r2Error.message
-      );
+      console.error("⚠️ خطأ في حذف الملف من R2:", r2Error.message);
     }
 
-    // 3. حذف الرابط من جدول Product الموحد
     const updateResult = await prisma.product.updateMany({
       where: { image: imageUrl },
       data: { image: null },
     });
 
-    // حذف احتياطي من الجدول القديم products إن وجد
     try {
       await prisma.products.updateMany({
         where: { images: imageUrl },
