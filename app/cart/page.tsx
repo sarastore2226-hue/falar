@@ -17,7 +17,7 @@ export default function CartPage() {
     Array<{ name: string; category: string; quantity: number; savings: number }>
   >([]);
 
-  const [paymentMethod, setPaymentMethod] = useState<"paymob" | "cod">("paymob");
+  const [paymentMethod, setPaymentMethod] = useState<"paymob" | "cod">("cod");
 
   const [customerData, setCustomerData] = useState({
     name: "",
@@ -79,7 +79,7 @@ export default function CartPage() {
 
         if (customer) {
           const parsedData = JSON.parse(customer);
-         setCustomerData({
+          setCustomerData({
             name: parsedData.username || "",
             phone: parsedData.phone || "",
             address: savedAddress || parsedData.address || "",
@@ -212,7 +212,7 @@ export default function CartPage() {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={1}
-                  d="M3 3h2l.4 2M7 13h10l4-8H5.4m0 0L7 13m0 0l-2.5 5.5M7 13l2.5 5.5m5.5-5.5h5"
+                  d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.5 5.5M7 13l2.5 5.5m5.5-5.5h5"
                 />
               </svg>
             </div>
@@ -442,41 +442,13 @@ export default function CartPage() {
                 </div>
               </div>
 
-              {/* اختيار وسيلة الدفع (Paymob أو عند الاستلام) */}
+              {/* اختيار وسيلة الدفع (الدفع عند الاستلام هو الافتراضي) */}
               <div className="mt-8 pt-6 border-t border-gray-200">
                 <h3 className="text-lg font-bold text-gray-900 mb-4">
                   طريقة الدفع
                 </h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <label
-                    onClick={() => setPaymentMethod("paymob")}
-                    className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                      paymentMethod === "paymob"
-                        ? "border-emerald-600 bg-emerald-50/50 shadow-sm"
-                        : "border-gray-200 hover:border-gray-300"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="radio"
-                        name="payment"
-                        checked={paymentMethod === "paymob"}
-                        onChange={() => setPaymentMethod("paymob")}
-                        className="w-5 h-5 text-emerald-600"
-                      />
-                      <div>
-                        <p className="font-bold text-gray-900 text-sm sm:text-base">
-                          دفع إلكتروني آمن
-                        </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          فيزا / ماستركارد / ميزة / محافظ إلكترونية
-                        </p>
-                      </div>
-                    </div>
-                    <span className="text-2xl">💳</span>
-                  </label>
-
                   <label
                     onClick={() => setPaymentMethod("cod")}
                     className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all ${
@@ -503,6 +475,34 @@ export default function CartPage() {
                       </div>
                     </div>
                     <span className="text-2xl">💵</span>
+                  </label>
+
+                  <label
+                    onClick={() => setPaymentMethod("paymob")}
+                    className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      paymentMethod === "paymob"
+                        ? "border-emerald-600 bg-emerald-50/50 shadow-sm"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="radio"
+                        name="payment"
+                        checked={paymentMethod === "paymob"}
+                        onChange={() => setPaymentMethod("paymob")}
+                        className="w-5 h-5 text-emerald-600"
+                      />
+                      <div>
+                        <p className="font-bold text-gray-900 text-sm sm:text-base">
+                          دفع إلكتروني آمن
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          فيزا / ماستركارد / ميزة / محافظ إلكترونية
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-2xl">💳</span>
                   </label>
                 </div>
               </div>
