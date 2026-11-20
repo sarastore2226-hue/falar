@@ -65,7 +65,7 @@ function OrderViewContent() {
       return;
     }
 
-    // 1. تسجيل الدخول التلقائي للعميل في المتجر مع الحفاظ على الحروف العربية سليمة
+    // 1. تسجيل الدخول التلقائي للعميل في المتجر مع الحفاظ على الاسم والهاتف والعنوان
     if (token) {
       try {
         const [base64Payload] = token.split(".");
@@ -74,13 +74,19 @@ function OrderViewContent() {
           const payload = JSON.parse(decodedJson);
 
           if (payload && payload.phone) {
+            const tokenAddress =
+              payload.address && payload.address !== "استلام من المعرض"
+                ? String(payload.address).trim()
+                : "";
+
             localStorage.setItem(
               "customer",
               JSON.stringify({
                 userid: payload.userId,
                 usercode: payload.usercode,
-                username: payload.username, // الاسم العربي سيكون سليماً 100%
+                username: payload.username,
                 phone: payload.phone,
+                address: tokenAddress,
                 position: "عميل",
                 permissions: "view_products",
               })
@@ -89,6 +95,10 @@ function OrderViewContent() {
               "customerToken",
               `customer_${payload.userId}_pos`
             );
+
+            if (tokenAddress) {
+              localStorage.setItem("customer_address", tokenAddress);
+            }
           }
         }
       } catch (err) {
@@ -102,7 +112,29 @@ function OrderViewContent() {
         const res = await fetch(`/api/orders/${orderId}`);
         if (!res.ok) throw new Error("تعذر العثور على الفاتورة");
 
-        const data = await res.json();
+        const data = (await res.json()) as OrderDetail;
+
+        // حفظ العنوان من الفاتورة إذا لم يكن محفوظاً بعد ولم يكن قيمة افتراضية
+        if (
+          data.address &&
+          data.address.trim() !== "" &&
+          data.address.trim() !== "استلام من المعرض"
+        ) {
+          localStorage.setItem("customer_address", data.address.trim());
+          try {
+            const rawCustomer = localStorage.getItem("customer");
+            if (rawCustomer) {
+              const parsed = JSON.parse(rawCustomer);
+              if (!parsed.address) {
+                parsed.address = data.address.trim();
+                localStorage.setItem("customer", JSON.stringify(parsed));
+              }
+            }
+          } catch {
+            // تجاهل
+          }
+        }
+
         const rawItems = (data.items || []) as RawOrderItem[];
 
         const itemsWithImages: DisplayOrderItem[] = await Promise.all(

@@ -56,6 +56,7 @@ export async function POST(request: Request) {
     }
 
     const cleanPhone = String(customerPhone).trim();
+    const cleanAddress = String(customerAddress || "").trim();
     const targetOrderId = `POS-${posOrderNo}`;
 
     // البحث عن حساب العميل أو إنشاؤه
@@ -83,12 +84,26 @@ export async function POST(request: Request) {
     });
 
     if (existingOrder) {
+      if (cleanAddress && cleanAddress !== existingOrder.address) {
+        await prisma.orders.update({
+          where: { id: targetOrderId },
+          data: { address: cleanAddress },
+        });
+      }
+
+      const resolvedAddress =
+        cleanAddress ||
+        (existingOrder.address && existingOrder.address !== "استلام من المعرض"
+          ? existingOrder.address
+          : "");
+
       const token = generateSecureToken({
         orderId: targetOrderId,
         userId: customerUser.userid,
         usercode: customerUser.usercode,
         username: customerUser.username,
         phone: customerUser.phone,
+        address: resolvedAddress,
         position: customerUser.position,
       });
 
@@ -106,7 +121,7 @@ export async function POST(request: Request) {
         data: {
           id: targetOrderId,
           customer_name: customerName || customerUser?.username || "عميل المعرض",
-          address: customerAddress || "استلام من المعرض",
+          address: cleanAddress || "استلام من المعرض",
           phone: cleanPhone,
           total_price: Number(totalAmount) || 0,
           status: deposit >= totalAmount ? "تم التسليم" : "تحت التجهيز",
@@ -136,6 +151,7 @@ export async function POST(request: Request) {
       usercode: customerUser.usercode,
       username: customerUser.username,
       phone: customerUser.phone,
+      address: cleanAddress,
       position: customerUser.position,
     });
 

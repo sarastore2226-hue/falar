@@ -79,10 +79,10 @@ export default function CartPage() {
 
         if (customer) {
           const parsedData = JSON.parse(customer);
-          setCustomerData({
+         setCustomerData({
             name: parsedData.username || "",
             phone: parsedData.phone || "",
-            address: savedAddress || "",
+            address: savedAddress || parsedData.address || "",
           });
         }
       } catch (error) {
