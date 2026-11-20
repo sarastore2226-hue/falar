@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/prisma";
 
 // GET - جلب طلب محدد بواسطة ID
 export async function GET(request, { params }) {
@@ -19,14 +17,13 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: "الطلب غير موجود" }, { status: 404 });
     }
 
-    // ✅ تصحيح: جلب حالة الطلب الحقيقية من قاعدة البيانات
     const formattedOrder = {
       id: order.id,
       customer_name: order.customer_name,
       address: order.address,
       phone: order.phone,
       total_price: parseFloat(order.total_price.toString()),
-      status: order.status || "تحت التجهيز", // ✅ من قاعدة البيانات وليس قيمة ثابتة
+      status: order.status || "تحت التجهيز",
       timestamp: order.timestamp,
       printed_by: order.printed_by || null,
       printed_at: order.printed_at || null,
@@ -64,7 +61,7 @@ export async function PUT(request, { params }) {
         ...(data.address && { address: data.address }),
         ...(data.phone && { phone: data.phone }),
         ...(data.total_price && { total_price: data.total_price }),
-        ...(data.status && { status: data.status }), // ✅ يمكن تحديث الحالة
+        ...(data.status && { status: data.status }),
         ...(data.printed_by && { printed_by: data.printed_by }),
         ...(data.printed_at && { printed_at: new Date(data.printed_at) }),
         ...(data.exported_by && { exported_by: data.exported_by }),
@@ -86,14 +83,12 @@ export async function PUT(request, { params }) {
   }
 }
 
-// DELETE - حذف طلب محدد مع استرجاع المخزون
+// DELETE - حذف طلب محدد مع استرجاع المخزون لجدول Product الموحد (باستثناء نسخ POS-)
 export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
 
-    // حذف الطلب واسترجاع المخزون في نفس المعاملة
     await prisma.$transaction(async (tx) => {
-      // جلب الطلب الحالي مع عناصره
       const existingOrder = await tx.orders.findUnique({
         where: { id },
         include: { order_items: true },
@@ -103,29 +98,41 @@ export async function DELETE(request, { params }) {
         return null;
       }
 
-      // ✅ استرجاع المخزون فقط إذا لم يكن الطلب قد استُردّ مخزونه مسبقاً
-      // (الطلب المُلغي استُردّ مخزونه عند الإلغاء، فلا نسترجع مرة أخرى)
-      if (existingOrder.status !== "ملغي") {
-        for (const item of existingOrder.order_items) {
-          const itemCode = item.item_code?.trim();
-          if (!itemCode) continue;
+      const isPosCopy = existingOrder.id.startsWith("POS-");
 
-          const product = await tx.products.findFirst({
-            where: { item_code: itemCode },
+      // استرجاع المخزون لطلبات المتجر فقط (وليس نسخ العرض POS- أو الملغية مسبقاً)
+      if (!isPosCopy && existingOrder.status !== "ملغي") {
+        for (const item of existingOrder.order_items) {
+          const modelNo = item.item_code?.trim();
+          const color = item.color?.trim() || "افتراضي";
+          if (!modelNo) continue;
+
+          let product = await tx.product.findFirst({
+            where: {
+              modelNo: { equals: modelNo, mode: "insensitive" },
+              color: { equals: color, mode: "insensitive" },
+            },
           });
+
+          if (!product) {
+            product = await tx.product.findFirst({
+              where: {
+                material: { equals: modelNo, mode: "insensitive" },
+              },
+            });
+          }
 
           if (!product) continue;
 
-          await tx.products.update({
-            where: { unique_id: product.unique_id },
+          await tx.product.update({
+            where: { id: product.id },
             data: {
-              cur_qty: (Number(product.cur_qty) || 0) + item.quantity,
+              currentStock: { increment: Number(item.quantity) || 0 },
             },
           });
         }
       }
 
-      // حذف عناصر الطلب ثم الطلب نفسه
       await tx.order_items.deleteMany({
         where: { order_id: id },
       });
@@ -137,7 +144,7 @@ export async function DELETE(request, { params }) {
 
     return NextResponse.json({
       success: true,
-      message: "تم حذف الطلب بنجاح واسترجاع الكميات إلى المخزون",
+      message: "تم حذف الطلب بنجاح واسترجاع الكميات إلى المخزون الموحد",
     });
   } catch (error) {
     console.error("Error deleting order:", error);

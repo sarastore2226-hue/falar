@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/prisma";
 
 export async function PUT(request) {
   try {
@@ -14,7 +12,6 @@ export async function PUT(request) {
       );
     }
 
-    // التحقق من أن الحالة مسموحة
     const allowedStatuses = ["تحت التجهيز", "جاري الشحن", "تم التسليم", "ملغي"];
     if (!allowedStatuses.includes(status)) {
       return NextResponse.json(
@@ -23,9 +20,7 @@ export async function PUT(request) {
       );
     }
 
-    // تحديث حالة الطلب واسترجاع المخزون عند الإلغاء (في نفس المعاملة)
     const updatedOrder = await prisma.$transaction(async (tx) => {
-      // جلب الطلب الحالي مع عناصره
       const existingOrder = await tx.orders.findUnique({
         where: { id: orderId },
         include: { order_items: true },
@@ -35,68 +30,86 @@ export async function PUT(request) {
         return null;
       }
 
+      const isPosCopy = existingOrder.id.startsWith("POS-");
       const wasCancelled = existingOrder.status === "ملغي";
       const isCancelling = status === "ملغي";
 
-      // ✅ عند الإلغاء: استرجاع الكميات إلى المخزون
-      if (isCancelling && !wasCancelled) {
+      if (!isPosCopy && isCancelling && !wasCancelled) {
         for (const item of existingOrder.order_items) {
-          const itemCode = item.item_code?.trim();
-          if (!itemCode) continue;
+          const modelNo = item.item_code?.trim();
+          const color = item.color?.trim() || "افتراضي";
+          if (!modelNo) continue;
 
-          const product = await tx.products.findFirst({
-            where: { item_code: itemCode },
+          let product = await tx.product.findFirst({
+            where: {
+              modelNo: { equals: modelNo, mode: "insensitive" },
+              color: { equals: color, mode: "insensitive" },
+            },
           });
+
+          if (!product) {
+            product = await tx.product.findFirst({
+              where: {
+                material: { equals: modelNo, mode: "insensitive" },
+              },
+            });
+          }
 
           if (!product) continue;
 
-          await tx.products.update({
-            where: { unique_id: product.unique_id },
+          await tx.product.update({
+            where: { id: product.id },
             data: {
-              cur_qty: (Number(product.cur_qty) || 0) + item.quantity,
+              currentStock: { increment: Number(item.quantity) || 0 },
             },
           });
         }
       }
 
-      // ✅ عند إعادة تفعيل طلب ملغي (إلى أي حالة أخرى): خصم الكميات مجدداً
-      if (!isCancelling && wasCancelled) {
+      if (!isPosCopy && !isCancelling && wasCancelled) {
         for (const item of existingOrder.order_items) {
-          const itemCode = item.item_code?.trim();
-          if (!itemCode) continue;
+          const modelNo = item.item_code?.trim();
+          const color = item.color?.trim() || "افتراضي";
+          if (!modelNo) continue;
 
-          const product = await tx.products.findFirst({
-            where: { item_code: itemCode },
+          let product = await tx.product.findFirst({
+            where: {
+              modelNo: { equals: modelNo, mode: "insensitive" },
+              color: { equals: color, mode: "insensitive" },
+            },
           });
+
+          if (!product) {
+            product = await tx.product.findFirst({
+              where: {
+                material: { equals: modelNo, mode: "insensitive" },
+              },
+            });
+          }
 
           if (!product) continue;
 
-          const availableQty = Number(product.cur_qty) || 0;
+          const availableQty = Number(product.currentStock) || 0;
 
-          if (availableQty < item.quantity) {
+          if (product.status !== "OPEN" && availableQty < item.quantity) {
             throw new Error(
               `الكمية المتاحة غير كافية لإعادة تفعيل الطلب للمنتج "${item.product}" — المطلوب: ${item.quantity}، المتاح: ${availableQty}`
             );
           }
 
-          await tx.products.update({
-            where: { unique_id: product.unique_id },
+          await tx.product.update({
+            where: { id: product.id },
             data: {
-              cur_qty: availableQty - item.quantity,
+              currentStock: { decrement: Number(item.quantity) || 0 },
             },
           });
         }
       }
 
-      // تحديث حالة الطلب
       return await tx.orders.update({
         where: { id: orderId },
-        data: {
-          status: status,
-        },
-        include: {
-          order_items: true,
-        },
+        data: { status },
+        include: { order_items: true },
       });
     });
 
