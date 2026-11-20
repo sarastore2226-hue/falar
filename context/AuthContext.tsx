@@ -5,6 +5,7 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useCallback,
   ReactNode,
 } from "react";
 
@@ -13,6 +14,7 @@ interface User {
   usercode: string;
   username: string;
   phone: string | null;
+  address?: string;
   position: string;
   permissions: string;
 }
@@ -37,7 +39,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // تحميل بيانات المستخدم من localStorage عند التحميل
     const loadUser = () => {
       try {
         const employee = localStorage.getItem("employee");
@@ -58,32 +59,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loadUser();
   }, []);
 
-  const login = (
-    userData: User,
-    token: string,
-    userType: "employee" | "customer"
-  ) => {
-    setUser(userData);
-    if (userType === "employee") {
-      localStorage.setItem("employee", JSON.stringify(userData));
-      localStorage.setItem("employeeToken", token);
-      localStorage.removeItem("customer");
-      localStorage.removeItem("customerToken");
-    } else {
-      localStorage.setItem("customer", JSON.stringify(userData));
-      localStorage.setItem("customerToken", token);
-      localStorage.removeItem("employee");
-      localStorage.removeItem("employeeToken");
-    }
-  };
+  const login = useCallback(
+    (
+      userData: User,
+      token: string,
+      userType: "employee" | "customer"
+    ) => {
+      setUser(userData);
+      if (userType === "employee") {
+        localStorage.setItem("employee", JSON.stringify(userData));
+        localStorage.setItem("employeeToken", token);
+        localStorage.removeItem("customer");
+        localStorage.removeItem("customerToken");
+      } else {
+        localStorage.setItem("customer", JSON.stringify(userData));
+        localStorage.setItem("customerToken", token);
+        localStorage.removeItem("employee");
+        localStorage.removeItem("employeeToken");
+      }
+    },
+    []
+  );
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setUser(null);
     localStorage.removeItem("employee");
     localStorage.removeItem("employeeToken");
     localStorage.removeItem("customer");
     localStorage.removeItem("customerToken");
-  };
+    localStorage.removeItem("customer_address");
+  }, []);
 
   const value = {
     user,

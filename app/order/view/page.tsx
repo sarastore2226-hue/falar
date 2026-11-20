@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Header from "@/app/components/Header";
 import Footer from "@/app/components/Footer";
 import Link from "next/link";
+import { useAuth } from "@/context/AuthContext";
 
 interface RawOrderItem {
   product: string;
@@ -50,6 +51,7 @@ function safeBase64DecodeUtf8(base64Payload: string): string {
 
 function OrderViewContent() {
   const searchParams = useSearchParams();
+  const { login } = useAuth();
 
   const orderId = searchParams.get("orderId");
   const token = searchParams.get("token");
@@ -65,7 +67,7 @@ function OrderViewContent() {
       return;
     }
 
-    // 1. تسجيل الدخول التلقائي للعميل في المتجر مع الحفاظ على الاسم والهاتف والعنوان
+    // 1. تسجيل الدخول التلقائي الفوري في AuthContext + localStorage بدون الحاجة لـ Refresh
     if (token) {
       try {
         const [base64Payload] = token.split(".");
@@ -79,26 +81,25 @@ function OrderViewContent() {
                 ? String(payload.address).trim()
                 : "";
 
-            localStorage.setItem(
-              "customer",
-              JSON.stringify({
-                userid: payload.userId,
-                usercode: payload.usercode,
-                username: payload.username,
-                phone: payload.phone,
+            if (tokenAddress) {
+              localStorage.setItem("customer_address", tokenAddress);
+            } else {
+              localStorage.removeItem("customer_address");
+            }
+
+            login(
+              {
+                userid: Number(payload.userId),
+                usercode: String(payload.usercode || ""),
+                username: String(payload.username || "عميل المعرض"),
+                phone: String(payload.phone),
                 address: tokenAddress,
                 position: "عميل",
                 permissions: "view_products",
-              })
+              },
+              `customer_${payload.userId}_pos`,
+              "customer"
             );
-            localStorage.setItem(
-              "customerToken",
-              `customer_${payload.userId}_pos`
-            );
-
-            if (tokenAddress) {
-              localStorage.setItem("customer_address", tokenAddress);
-            }
           }
         }
       } catch (err) {
@@ -114,19 +115,19 @@ function OrderViewContent() {
 
         const data = (await res.json()) as OrderDetail;
 
-        // حفظ العنوان من الفاتورة إذا لم يكن محفوظاً بعد ولم يكن قيمة افتراضية
         if (
           data.address &&
           data.address.trim() !== "" &&
           data.address.trim() !== "استلام من المعرض"
         ) {
-          localStorage.setItem("customer_address", data.address.trim());
+          const cleanAddr = data.address.trim();
+          localStorage.setItem("customer_address", cleanAddr);
           try {
             const rawCustomer = localStorage.getItem("customer");
             if (rawCustomer) {
               const parsed = JSON.parse(rawCustomer);
               if (!parsed.address) {
-                parsed.address = data.address.trim();
+                parsed.address = cleanAddr;
                 localStorage.setItem("customer", JSON.stringify(parsed));
               }
             }
@@ -178,7 +179,7 @@ function OrderViewContent() {
     }
 
     loadOrder();
-  }, [orderId, token]);
+  }, [orderId, token, login]);
 
   if (loading) {
     return (
