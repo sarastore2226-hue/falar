@@ -13,6 +13,7 @@ const PIECES_PER_SERIA = 4;
 interface Product {
   modelId: string;
   price: number;
+  size?: string;
   category: string;
   description: string;
   group_name?: string;
@@ -132,6 +133,14 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
     return desc.replace(/\s+/g, " ");
   };
 
+  const displaySize =
+    product.size && product.size.trim() !== "" && product.size !== "ONE SIZE"
+      ? product.size.trim()
+      : product.variants?.[0]?.sizes?.[0] &&
+        product.variants[0].sizes[0] !== "ONE SIZE"
+      ? product.variants[0].sizes[0]
+      : "";
+
   const mainImage =
     product.variants[currentImageIndex]?.imageUrl ||
     "https://via.placeholder.com/270x360/FFFFFF/666666?text=No+Image";
@@ -198,7 +207,7 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className="relative aspect-[3/4] overflow-hidden bg-gray-100">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={mainImage}
           srcSet={imageSrcSet}
@@ -295,9 +304,16 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
             compact
           />
 
-          <p className="text-[11px] text-gray-400 font-mono">
-            موديل: {product.master_code || product.modelId}
-          </p>
+          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+            <p className="text-[11px] text-gray-400 font-mono">
+              موديل: {product.master_code || product.modelId}
+            </p>
+            {displaySize && (
+              <span className="text-[11px] font-bold bg-purple-50 text-purple-800 border border-purple-200 px-2 py-0.5 rounded-md">
+                📏 {displaySize}
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="pt-2 border-t border-gray-100 flex justify-between items-end">

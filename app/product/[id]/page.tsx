@@ -17,7 +17,7 @@ interface ProductVariant {
   stor_id?: number;
   itemCode?: string;
   totalColorQuantity?: number;
-  sizes?: string[];
+  sizes: string[];
   sizeItemCodes?: { [size: string]: string };
   sizePrices?: { [size: string]: number };
   sizeQuantities?: { [size: string]: number };
@@ -27,6 +27,7 @@ interface Product {
   modelId: string;
   id?: string | number;
   price: number;
+  size?: string;
   category: string;
   description: string;
   master_code?: string;
@@ -43,7 +44,6 @@ interface ProductCandidate {
   modelId?: string;
   master_code?: string;
   item_code?: string;
-  [key: string]: unknown;
 }
 
 export default function ProductDetail() {
@@ -90,45 +90,79 @@ export default function ProductDetail() {
     fetchCompanyInfo();
   }, []);
 
-  const isProductMatch = useCallback((p: ProductCandidate | null | undefined, searchId: string) => {
-    if (!p) return false;
-    const searchStr = String(searchId).trim().toLowerCase();
+  const isProductMatch = useCallback(
+    (p: ProductCandidate | null | undefined, searchId: string) => {
+      if (!p) return false;
+      const searchStr = String(searchId).trim().toLowerCase();
 
-    return (
-      (p.id !== undefined && String(p.id) === searchId) ||
-      (p.modelId !== undefined && String(p.modelId).toLowerCase() === searchStr) ||
-      (p.master_code !== undefined && String(p.master_code).toLowerCase() === searchStr) ||
-      (p.item_code !== undefined && String(p.item_code).toLowerCase() === searchStr)
-    );
-  }, []);
+      return (
+        (p.id !== undefined && String(p.id) === searchId) ||
+        (p.modelId !== undefined &&
+          String(p.modelId).toLowerCase() === searchStr) ||
+        (p.master_code !== undefined &&
+          String(p.master_code).toLowerCase() === searchStr) ||
+        (p.item_code !== undefined &&
+          String(p.item_code).toLowerCase() === searchStr)
+      );
+    },
+    []
+  );
 
-  const processVariants = useCallback((
-    variants: ProductVariant[],
-    masterCode?: string,
-    modelId?: string
-  ): ProductVariant[] => {
-    if (!variants || variants.length === 0) return [];
+  const processVariants = useCallback(
+    (
+      variants: ProductVariant[],
+      masterCode?: string,
+      modelId?: string
+    ): ProductVariant[] => {
+      if (!variants || variants.length === 0) return [];
 
-    let processed = [...variants].sort((a, b) => Number(a.id) - Number(b.id));
+      let processed = [...variants]
+        .map((v) => ({
+          ...v,
+          sizes:
+            Array.isArray(v.sizes) && v.sizes.length > 0
+              ? v.sizes
+              : ["ONE SIZE"],
+        }))
+        .sort((a, b) => Number(a.id) - Number(b.id));
 
-    if (masterCode && masterCode.length > 2) {
-      processed = processed.filter((v) => {
-        if (!v.itemCode) return true;
-        const vCode = v.itemCode.toLowerCase();
-        const mCode = masterCode.toLowerCase();
-        const mid = modelId ? modelId.toLowerCase() : "";
+      if (masterCode && masterCode.length > 2) {
+        processed = processed.filter((v) => {
+          if (!v.itemCode) return true;
+          const vCode = v.itemCode.toLowerCase();
+          const mCode = masterCode.toLowerCase();
+          const mid = modelId ? modelId.toLowerCase() : "";
 
-        return vCode.includes(mCode) || (mid && vCode.includes(mid));
-      });
-    }
+          return vCode.includes(mCode) || (mid && vCode.includes(mid));
+        });
+      }
 
-    return processed;
-  }, []);
+      return processed;
+    },
+    []
+  );
 
   const fetchProductDetails = useCallback(async () => {
     try {
       let foundProduct: Product | undefined;
       let allProductsList: Product[] = [];
+
+      // جلب التفاصيل المباشرة من /api/products/[id] لضمان وجود الحقل size وأحدث البيانات
+      try {
+        const url = employee
+          ? `/api/products/${encodeURIComponent(productId)}?employee=true`
+          : `/api/products/${encodeURIComponent(productId)}`;
+        const directRes = await fetch(url);
+        if (directRes.ok) {
+          const directData = await directRes.json();
+          const p = (directData.product || directData) as Product;
+          if (p && isProductMatch(p, productId)) {
+            foundProduct = p;
+          }
+        }
+      } catch (e) {
+        console.log("Direct fetch error", e);
+      }
 
       try {
         const endpoint = employee
@@ -140,9 +174,11 @@ export default function ProductDetail() {
           const data = await response.json();
           if (data.success && data.products) {
             allProductsList = data.products as Product[];
-            foundProduct = allProductsList.find((p) =>
-              isProductMatch(p, productId)
-            );
+            if (!foundProduct) {
+              foundProduct = allProductsList.find((p) =>
+                isProductMatch(p, productId)
+              );
+            }
           }
         }
       } catch (err) {
@@ -151,7 +187,9 @@ export default function ProductDetail() {
 
       if (!foundProduct) {
         try {
-          const searchRes = await fetch(`/api/products?search=${encodeURIComponent(productId)}`);
+          const searchRes = await fetch(
+            `/api/products?search=${encodeURIComponent(productId)}`
+          );
           if (searchRes.ok) {
             const searchData = await searchRes.json();
             const list = (searchData.products || []) as Product[];
@@ -162,54 +200,56 @@ export default function ProductDetail() {
         }
       }
 
-      if (!foundProduct) {
-        try {
-          const url = employee
-            ? `/api/products/${encodeURIComponent(productId)}?employee=true`
-            : `/api/products/${encodeURIComponent(productId)}`;
-          const directRes = await fetch(url);
-          if (directRes.ok) {
-            const directData = await directRes.json();
-            const p = (directData.product || directData) as Product;
-
-            if (p && isProductMatch(p, productId)) {
-              foundProduct = p;
-            }
-          }
-        } catch (e) {
-          console.log("Direct fetch error", e);
-        }
-      }
-
       if (foundProduct) {
-        foundProduct.variants = processVariants(
-          foundProduct.variants,
-          foundProduct.master_code,
-          foundProduct.modelId
-        );
+        const verifiedProduct: Product = {
+          ...foundProduct,
+          variants: processVariants(
+            foundProduct.variants,
+            foundProduct.master_code,
+            foundProduct.modelId
+          ),
+        };
 
-        setProduct(foundProduct);
+        const resolvedSize =
+          verifiedProduct.size && verifiedProduct.size !== "ONE SIZE"
+            ? verifiedProduct.size
+            : "";
+
+        setProduct((prev) => ({
+          ...verifiedProduct,
+          size: resolvedSize || prev?.size || "",
+        }));
 
         let similar: Product[] = [];
-        if (allProductsList.length > 0 && foundProduct.category) {
+        if (allProductsList.length > 0 && verifiedProduct.category) {
           similar = allProductsList
             .filter(
               (p) =>
-                p.category === foundProduct!.category &&
-                String(p.modelId) !== String(foundProduct!.modelId)
+                p.category === verifiedProduct.category &&
+                String(p.modelId) !== String(verifiedProduct.modelId)
             )
-            .slice(0, 4);
+            .slice(0, 4)
+            .map((p) => ({
+              ...p,
+              variants: (p.variants || []).map((v) => ({
+                ...v,
+                sizes:
+                  Array.isArray(v.sizes) && v.sizes.length > 0
+                    ? v.sizes
+                    : ["ONE SIZE"],
+              })),
+            }));
         }
         setSimilarProducts(similar);
 
-        if (foundProduct.variants && foundProduct.variants.length > 0) {
-          const firstVariant = foundProduct.variants[0];
+        if (verifiedProduct.variants && verifiedProduct.variants.length > 0) {
+          const firstVariant = verifiedProduct.variants[0];
           setSelectedColor(firstVariant.color);
           setCurrentItemCode(
-            firstVariant.itemCode || foundProduct.item_code || ""
+            firstVariant.itemCode || verifiedProduct.item_code || ""
           );
         } else {
-          setCurrentItemCode(foundProduct.item_code || "");
+          setCurrentItemCode(verifiedProduct.item_code || "");
         }
       } else {
         setProduct(null);
@@ -229,7 +269,17 @@ export default function ProductDetail() {
           `product-preview:${productId}`
         );
         if (cachedProduct) {
-          setProduct(JSON.parse(cachedProduct));
+          const parsed = JSON.parse(cachedProduct) as Product;
+          setProduct({
+            ...parsed,
+            variants: (parsed.variants || []).map((v) => ({
+              ...v,
+              sizes:
+                Array.isArray(v.sizes) && v.sizes.length > 0
+                  ? v.sizes
+                  : ["ONE SIZE"],
+            })),
+          });
           setLoading(false);
         }
       } catch {
@@ -247,7 +297,8 @@ export default function ProductDetail() {
   const getAvailableStockPieces = () => {
     if (!employee) return 9999;
     if (selectedVariant?.cur_qty !== undefined) return selectedVariant.cur_qty;
-    if (selectedVariant?.totalColorQuantity !== undefined) return selectedVariant.totalColorQuantity;
+    if (selectedVariant?.totalColorQuantity !== undefined)
+      return selectedVariant.totalColorQuantity;
     return product?.cur_qty || 0;
   };
 
@@ -259,6 +310,13 @@ export default function ProductDetail() {
   const totalPiecesToOrder = seriesQuantity * PIECES_PER_SERIA;
   const totalPriceToOrder = totalPiecesToOrder * piecePrice;
 
+  const displaySize =
+    product?.size && product.size.trim() !== "" && product.size !== "ONE SIZE"
+      ? product.size.trim()
+      : selectedVariant?.sizes?.[0] && selectedVariant.sizes[0] !== "ONE SIZE"
+      ? selectedVariant.sizes[0]
+      : "";
+
   const handleAddToCart = () => {
     if (!product) return;
     if (employee && availableSeries === 0) {
@@ -268,8 +326,16 @@ export default function ProductDetail() {
     const finalColor =
       selectedColor || product.variants?.[0]?.color || "افتراضي";
 
-    addToCart(product, finalColor, "ONE SIZE", seriesQuantity, piecePrice);
-    alert(`✅ تم إضافة (${seriesQuantity} سرية = ${totalPiecesToOrder} قطعة) إلى السلة`);
+    addToCart(
+      product,
+      finalColor,
+      displaySize || "ONE SIZE",
+      seriesQuantity,
+      piecePrice
+    );
+    alert(
+      `✅ تم إضافة (${seriesQuantity} سرية = ${totalPiecesToOrder} قطعة) إلى السلة`
+    );
   };
 
   const handleWhatsApp = () => {
@@ -283,7 +349,9 @@ export default function ProductDetail() {
 
     const message = `السلام عليكم\nأريد حجز طلب جملة للمنتج:\n${
       product.description
-    }\n\n📦 **معلومات الطلب:**\n- الكود: ${productCode}\n- كود الصنف: ${
+    }\n\n📦 **معلومات الطلب:**\n- الكود: ${productCode}${
+      displaySize ? `\n- المقاس العام: ${displaySize}` : ""
+    }\n- كود الصنف: ${
       currentItemCode || "غير محدد"
     }\n- اللون: ${selectedColor || "غير محدد"}\n- الكمية المطلوبة: ${seriesQuantity} سرية (${totalPiecesToOrder} قطعة)\n- سعر القطعة: ${piecePrice} ج.م (السرية: ${seriaPrice} ج.م)\n- الإجمالي: ${totalPriceToOrder.toLocaleString()} ج.م\n- الحالة: ${availability}`;
 
@@ -429,7 +497,9 @@ export default function ProductDetail() {
                   src={mainImage}
                   alt={product.description}
                   className="h-full w-full object-contain p-4 transition-transform duration-200 ease-out group-hover:scale-[1.8]"
-                  style={{ transformOrigin: `${zoomPosition.x}% ${zoomPosition.y}%` }}
+                  style={{
+                    transformOrigin: `${zoomPosition.x}% ${zoomPosition.y}%`,
+                  }}
                   onError={(e) => {
                     e.currentTarget.src =
                       "https://via.placeholder.com/600x800/EFEFEF/666666?text=No+Image";
@@ -479,7 +549,9 @@ export default function ProductDetail() {
                   </code>
                   <button
                     onClick={() => {
-                      navigator.clipboard.writeText(currentItemCode || masterCode);
+                      navigator.clipboard.writeText(
+                        currentItemCode || masterCode
+                      );
                       alert("تم نسخ الكود بنجاح!");
                     }}
                     className="text-blue-600 hover:text-blue-800 text-sm font-bold"
@@ -535,18 +607,25 @@ export default function ProductDetail() {
                   />
                 </div>
 
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <span className="text-sm bg-gray-100 text-gray-600 px-2 py-1 rounded-md font-mono">
+                <div className="mt-3 flex flex-wrap gap-2 items-center">
+                  <span className="text-sm bg-gray-100 text-gray-600 px-2.5 py-1 rounded-md font-mono">
                     الكود: {masterCode}
                   </span>
+                  {displaySize && (
+                    <span className="text-sm bg-purple-50 text-purple-800 border border-purple-200 px-3 py-1 rounded-md font-bold">
+                      📏 المقاس: {displaySize}
+                    </span>
+                  )}
                 </div>
               </div>
 
-              {/* بطاقة الأسعار المتطورة للسرية والقطعة */}
+              {/* بطاقة الأسعار للسرية والقطعة */}
               <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-2">
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="text-gray-500 text-xs font-bold block">سعر القطعة:</span>
+                    <span className="text-gray-500 text-xs font-bold block">
+                      سعر القطعة:
+                    </span>
                     <span className="text-2xl sm:text-3xl font-extrabold text-blue-600">
                       {piecePrice.toLocaleString()} ج.م
                     </span>
@@ -563,7 +642,9 @@ export default function ProductDetail() {
 
                 <div className="pt-2 border-t border-slate-200 flex justify-between items-center text-sm font-bold text-gray-700">
                   <span>سعر السرية (4 قطع):</span>
-                  <span className="text-lg text-emerald-700 font-black">{seriaPrice.toLocaleString()} ج.م</span>
+                  <span className="text-lg text-emerald-700 font-black">
+                    {seriaPrice.toLocaleString()} ج.م
+                  </span>
                 </div>
               </div>
 
@@ -587,7 +668,8 @@ export default function ProductDetail() {
                         <span>{variant.color}</span>
                         {employee && variant.cur_qty !== undefined && (
                           <span className="text-[10px] text-gray-400 mt-0.5">
-                            ({Math.floor(variant.cur_qty / PIECES_PER_SERIA)} سرية)
+                            ({Math.floor(variant.cur_qty / PIECES_PER_SERIA)}{" "}
+                            سرية)
                           </span>
                         )}
                       </button>
@@ -596,11 +678,13 @@ export default function ProductDetail() {
                 </div>
               )}
 
-              {/* عداد السريات الذكي */}
+              {/* عداد السريات */}
               <div className="bg-blue-50/50 p-5 rounded-2xl border border-blue-100 space-y-3">
                 <div className="flex justify-between items-center">
                   <div>
-                    <h3 className="text-base font-bold text-gray-900">الكمية بالسريات:</h3>
+                    <h3 className="text-base font-bold text-gray-900">
+                      الكمية بالسريات:
+                    </h3>
                     <p className="text-xs text-blue-700 font-medium">
                       (السرية تحتوي على تشكيلة مقاسات كاملة = 4 قطع)
                     </p>
@@ -608,7 +692,9 @@ export default function ProductDetail() {
 
                   <div className="flex items-center border border-blue-200 bg-white rounded-xl overflow-hidden shadow-sm">
                     <button
-                      onClick={() => setSeriesQuantity(Math.max(1, seriesQuantity - 1))}
+                      onClick={() =>
+                        setSeriesQuantity(Math.max(1, seriesQuantity - 1))
+                      }
                       className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 transition-colors border-l font-bold text-lg"
                       disabled={employee && availableSeries === 0}
                     >
@@ -629,7 +715,10 @@ export default function ProductDetail() {
 
                 <div className="pt-3 border-t border-blue-200/60 flex justify-between items-center text-xs sm:text-sm font-bold">
                   <span className="text-gray-600">
-                    إجمالي القطع: <span className="text-blue-800 font-black">{totalPiecesToOrder} قطعة</span>
+                    إجمالي القطع:{" "}
+                    <span className="text-blue-800 font-black">
+                      {totalPiecesToOrder} قطعة
+                    </span>
                   </span>
                   <span className="text-emerald-700 font-black text-base">
                     {totalPriceToOrder.toLocaleString()} ج.م
@@ -688,8 +777,12 @@ export default function ProductDetail() {
                   شروط توريد الجملة
                 </h3>
                 <ul className="space-y-1.5 text-xs text-gray-600">
-                  <li>• البيع بالسريات فقط (كل سرية تشمل 4 قطع بمقاسات مختلفة).</li>
-                  <li>• الفاتورة تخرج بالقطع الفعلية المعتمدة ومطابقة لبرنامج المعرض.</li>
+                  <li>
+                    • البيع بالسريات فقط (كل سرية تشمل 4 قطع بمقاسات مختلفة).
+                  </li>
+                  <li>
+                    • الفاتورة تخرج بالقطع الفعلية المعتمدة ومطابقة لبرنامج المعرض.
+                  </li>
                   <li>• فحص ومعاينة البضاعة عند الاستلام.</li>
                 </ul>
               </div>

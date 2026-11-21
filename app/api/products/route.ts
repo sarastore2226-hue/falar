@@ -17,6 +17,7 @@ interface ProductVariantResponse {
   itemCode: string;
   item_code: string;
   sizes: string[];
+  size: string;
   material: string | null;
 }
 
@@ -24,6 +25,7 @@ interface GroupedProductResponse {
   modelId: string;
   master_code: string;
   price: number;
+  size: string;
   category: string;
   group_name: string;
   kind_name: string;
@@ -36,6 +38,7 @@ interface ProductPayloadInput {
   master_code?: string;
   modelNo?: string;
   color?: string;
+  size?: string;
   item_name?: string;
   description?: string;
   out_price?: string | number;
@@ -65,19 +68,18 @@ export async function GET(request: Request) {
 
     const andConditions: Prisma.ProductWhereInput[] = [];
 
-    // إذا لم يكن موظفاً ولم يكن تصديراً، نظهر المتاح فقط
     if (!employeeView && !isExport) {
       andConditions.push({
         OR: [{ status: "OPEN" }, { currentStock: { gt: 0 } }],
       });
     }
 
-    // البحث النصي في الكود، اللون، الوصف، الجروب، والنوع
     if (search) {
       andConditions.push({
         OR: [
           { modelNo: { contains: search, mode: "insensitive" } },
           { color: { contains: search, mode: "insensitive" } },
+          { size: { contains: search, mode: "insensitive" } },
           { description: { contains: search, mode: "insensitive" } },
           { material: { contains: search, mode: "insensitive" } },
           { group_name: { contains: search, mode: "insensitive" } },
@@ -86,7 +88,6 @@ export async function GET(request: Request) {
       });
     }
 
-    // تحويل ID التصنيف الرقمي إلى اسم التصنيف إن وُجد
     let categoryName = categoryParam;
     if (categoryParam && !isNaN(parseInt(categoryParam, 10))) {
       const cat = await prisma.categories.findUnique({
@@ -109,7 +110,6 @@ export async function GET(request: Request) {
     const whereConditions: Prisma.ProductWhereInput =
       andConditions.length > 0 ? { AND: andConditions } : {};
 
-    // تصدير الإكسيل للبيانات الخام
     if (isExport) {
       const rawExport = await prisma.product.findMany({
         where: whereConditions,
@@ -121,7 +121,7 @@ export async function GET(request: Request) {
         item_code: `${p.modelNo}-${p.color}`,
         item_name: p.description || `موديل ${p.modelNo}`,
         color: p.color,
-        size: "ONE SIZE",
+        size: p.size || "",
         out_price: p.price,
         cur_qty: p.currentStock,
         group_name: p.group_name || "",
@@ -133,7 +133,6 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: true, data: exportData });
     }
 
-    // جلب المنتجات مرتبة بالأحدث
     const rawProducts = await prisma.product.findMany({
       where: whereConditions,
       orderBy: { id: "desc" },
@@ -144,6 +143,7 @@ export async function GET(request: Request) {
     for (const p of rawProducts) {
       const modelId = p.modelNo.trim();
       const colorName = p.color.trim();
+      const generalSize = (p.size || "").trim();
 
       const hasRealImage = Boolean(p.image && p.image.trim() !== "");
       const fallbackImage = `${R2_PUBLIC_URL}/${modelId}-${colorName}.webp`;
@@ -157,6 +157,7 @@ export async function GET(request: Request) {
           modelId: modelId,
           master_code: modelId,
           price: p.price,
+          size: generalSize,
           category: p.group_name || p.kind_name || p.material || "عام",
           group_name: p.group_name || "",
           kind_name: p.kind_name || "",
@@ -165,6 +166,8 @@ export async function GET(request: Request) {
           variants: [],
         };
         groupedMap.set(modelId, item);
+      } else if (!item.size && generalSize) {
+        item.size = generalSize;
       }
 
       item.cur_qty += p.currentStock;
@@ -178,7 +181,8 @@ export async function GET(request: Request) {
         price: p.price,
         itemCode: `${modelId}-${colorName}`,
         item_code: `${modelId}-${colorName}`,
-        sizes: ["ONE SIZE"],
+        sizes: [generalSize || "ONE SIZE"],
+        size: generalSize,
         material: p.material,
       });
     }
@@ -212,14 +216,13 @@ export async function GET(request: Request) {
   }
 }
 
-// 2️⃣ دالة POST (إضافة وتحديث المنتجات من الداشبورد يدوياً أو عبر إكسيل)
+// 2️⃣ دالة POST
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as
       | ProductPayloadInput
       | ProductPayloadInput[];
 
-    // في حال الإضافة الجماعية عبر إكسيل
     if (Array.isArray(body)) {
       let count = 0;
       for (const item of body) {
@@ -229,6 +232,7 @@ export async function POST(request: Request) {
 
         const price = parseFloat(String(item.out_price ?? item.price ?? 0)) || 0;
         const qty = parseInt(String(item.cur_qty ?? item.stockQty ?? 0), 10) || 0;
+        const sizeVal = String(item.size || "").trim();
 
         await prisma.product.upsert({
           where: {
@@ -239,6 +243,7 @@ export async function POST(request: Request) {
           },
           update: {
             description: item.item_name || item.description,
+            size: sizeVal || undefined,
             price: price,
             currentStock: qty,
             stockQty: qty,
@@ -250,6 +255,7 @@ export async function POST(request: Request) {
           create: {
             modelNo: modelNo,
             color: color,
+            size: sizeVal || null,
             description: item.item_name || item.description || `موديل ${modelNo}`,
             price: price,
             currentStock: qty,
@@ -269,7 +275,6 @@ export async function POST(request: Request) {
       });
     }
 
-    // إضافة صنف فردي
     const modelNo = String(body.master_code || body.modelNo || "").trim();
     const color = String(body.color || "افتراضي").trim();
 
@@ -282,6 +287,7 @@ export async function POST(request: Request) {
 
     const price = parseFloat(String(body.out_price ?? body.price ?? 0)) || 0;
     const qty = parseInt(String(body.cur_qty ?? body.stockQty ?? 0), 10) || 0;
+    const sizeVal = String(body.size || "").trim();
 
     const createdProduct = await prisma.product.upsert({
       where: {
@@ -292,6 +298,7 @@ export async function POST(request: Request) {
       },
       update: {
         description: body.item_name || body.description,
+        size: sizeVal || undefined,
         price: price,
         currentStock: qty,
         stockQty: qty,
@@ -303,6 +310,7 @@ export async function POST(request: Request) {
       create: {
         modelNo: modelNo,
         color: color,
+        size: sizeVal || null,
         description: body.item_name || body.description || `موديل ${modelNo}`,
         price: price,
         currentStock: qty,
