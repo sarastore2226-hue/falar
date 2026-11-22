@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, type ComponentProps } from "react";
+import { useState, useEffect, useMemo, type ComponentProps } from "react";
 import Header from "./Header";
 import ProductCard from "./ProductCard";
 import Pagination from "./Pagination";
@@ -8,13 +8,13 @@ import Link from "next/link";
 import { useDisplay } from "@/context/DisplayContext";
 import { useLanguage } from "@/context/LanguageContext";
 
-// تعريف الأنواع بدقة لمنع أخطاء ESLint (no-explicit-any)
 type Product = ComponentProps<typeof ProductCard>["product"] & {
   modelId?: string | number;
   description?: string;
   category?: string;
   kind_name?: string;
   master_code?: string;
+  size?: string;
   [key: string]: unknown;
 };
 
@@ -39,6 +39,48 @@ interface EmployeeProductsApiResponse {
   products?: Product[];
 }
 
+const SIZE_STAGE_ORDER = ["مواليد", "بيبي", "وسط", "محير", "شبابي"];
+
+const SIZE_EN_LABELS: Record<string, string> = {
+  مواليد: "Newborn",
+  بيبي: "Baby",
+  وسط: "Medium",
+  محير: "Teens",
+  شبابي: "Youth",
+};
+
+function getProductRawSize(product: Product): string {
+  if (
+    typeof product.size === "string" &&
+    product.size.trim() !== "" &&
+    product.size.trim() !== "ONE SIZE"
+  ) {
+    return product.size.trim();
+  }
+
+  const firstVariantSize = product.variants?.[0]?.sizes?.[0];
+  if (
+    typeof firstVariantSize === "string" &&
+    firstVariantSize.trim() !== "" &&
+    firstVariantSize.trim() !== "ONE SIZE"
+  ) {
+    return firstVariantSize.trim();
+  }
+
+  return "";
+}
+
+function extractShortSize(rawSize: string): string {
+  const clean = rawSize.trim();
+  if (!clean || clean === "ONE SIZE") return "";
+  if (clean.includes("حديثي الولادة") || clean.includes("مواليد")) return "مواليد";
+  if (clean.includes("بيبي")) return "بيبي";
+  if (clean.includes("وسط")) return "وسط";
+  if (clean.includes("محير")) return "محير";
+  if (clean.includes("شبابي")) return "شبابي";
+  return clean;
+}
+
 export default function CategoryClient({
   initialProducts = [],
   categories = [],
@@ -56,6 +98,7 @@ export default function CategoryClient({
   const [selectedSubCategory, setSelectedSubCategory] = useState<string | null>(
     null
   );
+  const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [isEmployee, setIsEmployee] = useState(false);
   const [loadingEmployeeProducts, setLoadingEmployeeProducts] = useState(false);
 
@@ -113,7 +156,25 @@ export default function CategoryClient({
     (sub: CategoryItem) => !isMainBranch(sub)
   );
 
-  // منطق الفلترة (بحث + تصنيف فرعي)
+  // استخراج المقاسات المختصرة المتوفرة في التصنيف الحالي
+  const availableSizes = useMemo(() => {
+    const uniqueSizes = new Set<string>();
+    products.forEach((product) => {
+      const shortSize = extractShortSize(getProductRawSize(product));
+      if (shortSize) uniqueSizes.add(shortSize);
+    });
+
+    return Array.from(uniqueSizes).sort((a, b) => {
+      const idxA = SIZE_STAGE_ORDER.indexOf(a);
+      const idxB = SIZE_STAGE_ORDER.indexOf(b);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.localeCompare(b, "ar");
+    });
+  }, [products]);
+
+  // منطق الفلترة المشتركة (بحث + تصنيف فرعي + مقاس)
   useEffect(() => {
     let result = [...products];
 
@@ -141,9 +202,22 @@ export default function CategoryClient({
       );
     }
 
+    // فلترة المقاس المختصر
+    if (selectedSize) {
+      const sizeLower = selectedSize.toLowerCase();
+      result = result.filter((p: Product) => {
+        const rawSize = getProductRawSize(p);
+        if (!rawSize) return false;
+        return (
+          extractShortSize(rawSize) === selectedSize ||
+          rawSize.toLowerCase().includes(sizeLower)
+        );
+      });
+    }
+
     setFilteredProducts(result);
     setCurrentPage(1);
-  }, [searchTerm, selectedSubCategory, products]);
+  }, [searchTerm, selectedSubCategory, selectedSize, products]);
 
   // منطق الترقيم
   useEffect(() => {
@@ -154,6 +228,18 @@ export default function CategoryClient({
   const handleSubCategoryClick = (name: string) => {
     setSelectedSubCategory(selectedSubCategory === name ? null : name);
   };
+
+  const handleSizeClick = (sizeLabel: string) => {
+    setSelectedSize(selectedSize === sizeLabel ? null : sizeLabel);
+  };
+
+  const resetAllFilters = () => {
+    setSelectedSubCategory(null);
+    setSelectedSize(null);
+    setSearchTerm("");
+  };
+
+  const activeAccentColor = settings.storeIconColor || "#3B82F6";
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -250,17 +336,60 @@ export default function CategoryClient({
           />
         </div>
 
-        {/* Leaf Sub Categories */}
+        {/* Leaf Sub Categories + أيقونة الكل */}
         {leafSubCategories.length > 0 && (
-          <div className="flex overflow-x-auto gap-4 mb-8 pb-4">
+          <div className="flex overflow-x-auto gap-4 mb-5 pb-2 pt-1">
+            {/* زر الكل للتصنيفات الفرعية */}
+            <button
+              type="button"
+              onClick={() => setSelectedSubCategory(null)}
+              className={`flex flex-col items-center min-w-[76px] transition-all ${
+                selectedSubCategory === null
+                  ? "opacity-100 scale-105"
+                  : "opacity-75 hover:opacity-100"
+              }`}
+            >
+              <div
+                className="w-16 h-16 rounded-full overflow-hidden border-2 flex items-center justify-center shadow-sm transition-colors font-extrabold text-sm"
+                style={{
+                  borderColor:
+                    selectedSubCategory === null
+                      ? activeAccentColor
+                      : "#E5E7EB",
+                  backgroundColor:
+                    selectedSubCategory === null
+                      ? `${activeAccentColor}15`
+                      : "#FFFFFF",
+                  color:
+                    selectedSubCategory === null
+                      ? activeAccentColor
+                      : settings.fontColor,
+                }}
+              >
+                {isArabic ? "الكل" : "All"}
+              </div>
+              <span
+                className="text-sm mt-2 font-bold"
+                style={{
+                  color:
+                    selectedSubCategory === null
+                      ? activeAccentColor
+                      : settings.fontColor,
+                }}
+              >
+                {isArabic ? "الكل" : "All"}
+              </span>
+            </button>
+
             {leafSubCategories.map((sub: CategoryItem) => (
               <button
+                type="button"
                 key={sub.id}
                 onClick={() => handleSubCategoryClick(sub.name)}
                 className={`flex flex-col items-center min-w-[80px] transition-all ${
                   selectedSubCategory === sub.name
-                    ? "opacity-100 scale-110"
-                    : "opacity-80"
+                    ? "opacity-100 scale-105"
+                    : "opacity-80 hover:opacity-100"
                 }`}
               >
                 <div
@@ -268,7 +397,7 @@ export default function CategoryClient({
                   style={{
                     borderColor:
                       selectedSubCategory === sub.name
-                        ? settings.storeIconColor || "#3B82F6"
+                        ? activeAccentColor
                         : "#E5E7EB",
                   }}
                 >
@@ -281,12 +410,68 @@ export default function CategoryClient({
                 </div>
                 <span
                   className="text-sm mt-2 font-medium"
-                  style={{ color: settings.fontColor }}
+                  style={{
+                    color:
+                      selectedSubCategory === sub.name
+                        ? activeAccentColor
+                        : settings.fontColor,
+                    fontWeight: selectedSubCategory === sub.name ? 700 : 500,
+                  }}
                 >
                   {t(sub.name)}
                 </span>
               </button>
             ))}
+          </div>
+        )}
+
+        {/* فلتر المقاسات المصغر (يعمل منفرداً أو مع التصنيف الفرعي) */}
+        {availableSizes.length > 0 && (
+          <div className="mb-8 flex items-center gap-2 overflow-x-auto pb-2">
+            <span
+              className="text-xs sm:text-sm font-bold shrink-0 px-1"
+              style={{ color: settings.fontColor }}
+            >
+              📏 {isArabic ? "المقاس:" : "Size:"}
+            </span>
+
+            <button
+              type="button"
+              onClick={() => setSelectedSize(null)}
+              className="px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-bold border transition-all whitespace-nowrap shrink-0"
+              style={{
+                borderColor:
+                  selectedSize === null ? activeAccentColor : "#E5E7EB",
+                backgroundColor:
+                  selectedSize === null ? activeAccentColor : "#FFFFFF",
+                color: selectedSize === null ? "#FFFFFF" : settings.fontColor,
+              }}
+            >
+              {isArabic ? "الكل" : "All"}
+            </button>
+
+            {availableSizes.map((sizeLabel) => {
+              const isActive = selectedSize === sizeLabel;
+              const displayLabel = isArabic
+                ? sizeLabel
+                : SIZE_EN_LABELS[sizeLabel] || sizeLabel;
+
+              return (
+                <button
+                  type="button"
+                  key={sizeLabel}
+                  onClick={() => handleSizeClick(sizeLabel)}
+                  className="px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-bold border transition-all whitespace-nowrap shrink-0"
+                  style={{
+                    borderColor: isActive ? activeAccentColor : "#E5E7EB",
+                    backgroundColor: isActive ? activeAccentColor : "#FFFFFF",
+                    color: isActive ? "#FFFFFF" : settings.fontColor,
+                  }}
+                >
+                  {displayLabel}
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -321,13 +506,25 @@ export default function CategoryClient({
             )}
           </>
         ) : (
-          <div
-            className="text-center py-12 font-medium"
-            style={{ color: settings.fontColor }}
-          >
-            {isArabic
-              ? "لا توجد منتجات في هذا التصنيف"
-              : "No products in this category"}
+          <div className="text-center py-12 space-y-4">
+            <div
+              className="font-medium"
+              style={{ color: settings.fontColor }}
+            >
+              {isArabic
+                ? "لا توجد منتجات مطابقة في هذا التصنيف"
+                : "No matching products in this category"}
+            </div>
+            {(selectedSubCategory || selectedSize || searchTerm) && (
+              <button
+                type="button"
+                onClick={resetAllFilters}
+                className="px-5 py-2 rounded-full text-sm font-bold text-white shadow-sm transition-opacity hover:opacity-90"
+                style={{ backgroundColor: activeAccentColor }}
+              >
+                {isArabic ? "عرض جميع المنتجات (إزالة الفلاتر)" : "Show All Products"}
+              </button>
+            )}
           </div>
         )}
       </main>

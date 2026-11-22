@@ -116,7 +116,7 @@ export default function HomeClient({ initialProducts = [], initialCategories = [
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8 justify-items-center">
               {displayCategories.map((cat: Category, index: number) => (
-                <Link key={cat.id} href={`/categories/${cat.id}`} className="group text-center block">
+                <Link key={cat.id} href={`/categories/${cat.id}`} className="group text-center flex flex-col items-center">
                   <div
                     className="bg-white rounded-[60px_20px_60px_20px] p-4 shadow-lg w-40 h-48 md:w-64 md:h-72 flex flex-col justify-end items-center overflow-hidden transition-all duration-300 group-hover:shadow-xl group-hover:scale-105 relative"
                     style={{ transform: `rotate(${index % 2 === 0 ? "-5deg" : "-5deg"})` }}
@@ -142,6 +142,13 @@ export default function HomeClient({ initialProducts = [], initialCategories = [
                       </div>
                     </div>
                   </div>
+                  <span
+                    className="mt-3 inline-flex items-center gap-1 rounded-full bg-white px-4 py-1 text-xs md:text-sm font-bold shadow-sm border border-pink-100 transition-all group-hover:scale-105 group-hover:shadow"
+                    style={{ color: settings.storeIconColor || settings.fontColor }}
+                  >
+                    <span>{isArabic ? "اضغط هنا" : "Click here"}</span>
+                    <span>{isArabic ? "←" : "→"}</span>
+                  </span>
                 </Link>
               ))}
             </div>
