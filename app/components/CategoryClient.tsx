@@ -99,6 +99,7 @@ export default function CategoryClient({
     null
   );
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(true);
   const [isEmployee, setIsEmployee] = useState(false);
   const [loadingEmployeeProducts, setLoadingEmployeeProducts] = useState(false);
 
@@ -178,7 +179,6 @@ export default function CategoryClient({
   useEffect(() => {
     let result = [...products];
 
-    // فلترة البحث
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       result = result.filter(
@@ -190,7 +190,6 @@ export default function CategoryClient({
       );
     }
 
-    // فلترة التصنيف الفرعي
     if (selectedSubCategory) {
       const subTerm = selectedSubCategory.toLowerCase();
       result = result.filter(
@@ -202,7 +201,6 @@ export default function CategoryClient({
       );
     }
 
-    // فلترة المقاس المختصر
     if (selectedSize) {
       const sizeLower = selectedSize.toLowerCase();
       result = result.filter((p: Product) => {
@@ -240,24 +238,28 @@ export default function CategoryClient({
   };
 
   const activeAccentColor = settings.storeIconColor || "#3B82F6";
+  const activeFiltersCount =
+    (selectedSubCategory ? 1 : 0) +
+    (selectedSize ? 1 : 0) +
+    (searchTerm.trim() ? 1 : 0);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
       <Header />
 
       <main className="max-w-7xl mx-auto py-4 sm:py-8 px-3 sm:px-6 lg:px-8">
         {/* Header Section */}
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex justify-between items-center mb-4">
           <button
             onClick={() => window.history.back()}
-            className="flex items-center hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors font-medium text-sm"
+            className="flex items-center bg-white/80 backdrop-blur-md hover:bg-white px-3.5 py-2 rounded-full shadow-sm border border-gray-200/80 transition-all font-bold text-sm"
             style={{ color: settings.fontColor }}
           >
             <span className="ml-1">{isArabic ? "←" : "→"}</span>
             <span>{isArabic ? "العودة" : "Back"}</span>
           </button>
           {isEmployee && (
-            <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
+            <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium shadow-sm">
               👔 {isArabic ? "وضع الموظف" : "Employee Mode"}
               {loadingEmployeeProducts ? "..." : ""}
             </span>
@@ -277,7 +279,7 @@ export default function CategoryClient({
           </p>
         </div>
 
-        {/* Main-from-main Sub Categories */}
+        {/* Main-from-main Sub Categories (عرض عائم حديث) */}
         {mainSubCategories.length > 0 && (
           <div className="mb-10">
             <h2
@@ -288,27 +290,26 @@ export default function CategoryClient({
                 ? `أقسام ${t(currentCategory?.name || "")}`
                 : `${t(currentCategory?.name || "")} Sections`}
             </h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8 justify-items-center">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 sm:gap-7 justify-items-center">
               {mainSubCategories.map((sub: CategoryItem) => (
                 <Link
                   key={sub.id}
                   href={`/categories/${sub.id}`}
-                  className="group text-center block"
+                  className="group relative flex flex-col items-center w-full max-w-[245px] transition-transform duration-500 ease-out hover:-translate-y-2"
                 >
-                  <div className="bg-white rounded-[60px_20px_60px_20px] p-4 shadow-lg w-40 h-48 md:w-64 md:h-72 flex flex-col justify-end items-center overflow-hidden transition-all duration-300 group-hover:shadow-xl group-hover:scale-105 relative">
-                    <div className="absolute inset-0 w-full h-full flex justify-center items-center">
+                  <div className="relative w-full aspect-[4/5] rounded-[2rem] bg-white/90 p-2 shadow-[0_18px_40px_-12px_rgba(15,23,42,0.14)] ring-1 ring-black/5 backdrop-blur-md transition-all duration-500 group-hover:shadow-[0_26px_55px_-12px_rgba(59,130,246,0.22)]">
+                    <div className="relative w-full h-full overflow-hidden rounded-[1.55rem] bg-gray-100">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={sub.image}
                         alt={sub.name}
-                        className="w-full h-full object-cover rounded-2xl"
+                        className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"
                         loading="lazy"
                       />
-                    </div>
-                    <div className="relative z-10 w-full pt-32 md:pt-48">
-                      <div className="bg-white/90 backdrop-blur-sm rounded-full mx-4 py-3 px-4 border border-white/50">
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-black/5 to-transparent" />
+                      <div className="absolute inset-x-3 bottom-3 rounded-2xl bg-white/85 backdrop-blur-xl px-3 py-2.5 shadow-lg border border-white/80 transition-all duration-300 group-hover:bg-white">
                         <p
-                          className="text-lg font-bold text-center"
+                          className="text-base md:text-lg font-extrabold text-center truncate"
                           style={{ color: settings.fontColor }}
                         >
                           {t(sub.name)}
@@ -322,158 +323,209 @@ export default function CategoryClient({
           </div>
         )}
 
-        {/* Search */}
-        <div className="mb-6 bg-white rounded-xl shadow-sm p-4 border border-gray-200">
-          <input
-            type="text"
-            placeholder={
-              isArabic ? "ابحث في هذا التصنيف..." : "Search in this category..."
-            }
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:outline-none text-sm"
-            style={{ color: settings.fontColor }}
-          />
-        </div>
-
-        {/* Leaf Sub Categories + أيقونة الكل */}
-        {leafSubCategories.length > 0 && (
-          <div className="flex overflow-x-auto gap-4 mb-5 pb-2 pt-1">
-            {/* زر الكل للتصنيفات الفرعية */}
-            <button
-              type="button"
-              onClick={() => setSelectedSubCategory(null)}
-              className={`flex flex-col items-center min-w-[76px] transition-all ${
-                selectedSubCategory === null
-                  ? "opacity-100 scale-105"
-                  : "opacity-75 hover:opacity-100"
-              }`}
-            >
-              <div
-                className="w-16 h-16 rounded-full overflow-hidden border-2 flex items-center justify-center shadow-sm transition-colors font-extrabold text-sm"
-                style={{
-                  borderColor:
-                    selectedSubCategory === null
-                      ? activeAccentColor
-                      : "#E5E7EB",
-                  backgroundColor:
-                    selectedSubCategory === null
-                      ? `${activeAccentColor}15`
-                      : "#FFFFFF",
-                  color:
-                    selectedSubCategory === null
-                      ? activeAccentColor
-                      : settings.fontColor,
-                }}
-              >
-                {isArabic ? "الكل" : "All"}
+        {/* منصة الفلاتر الزجاجية العائمة الحديثة */}
+        <div className="sticky top-[72px] z-30 mb-8">
+          <div className="rounded-3xl bg-white/85 backdrop-blur-xl border border-white shadow-[0_14px_40px_-10px_rgba(15,23,42,0.14)] ring-1 ring-black/5 p-3 sm:p-4 space-y-3 transition-all">
+            {/* الصف العلوي: البحث + زر إعادة التعيين + زر طي/فتح على الموبايل */}
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  placeholder={
+                    isArabic
+                      ? "🔍 ابحث برقم الموديل أو الاسم..."
+                      : "🔍 Search by model or name..."
+                  }
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full px-4 py-2 rounded-2xl bg-gray-100/80 border border-gray-200/70 focus:bg-white focus:ring-2 focus:ring-pink-400 focus:outline-none text-xs sm:text-sm font-medium transition-all"
+                  style={{ color: settings.fontColor }}
+                />
               </div>
-              <span
-                className="text-sm mt-2 font-bold"
-                style={{
-                  color:
-                    selectedSubCategory === null
-                      ? activeAccentColor
-                      : settings.fontColor,
-                }}
-              >
-                {isArabic ? "الكل" : "All"}
-              </span>
-            </button>
 
-            {leafSubCategories.map((sub: CategoryItem) => (
-              <button
-                type="button"
-                key={sub.id}
-                onClick={() => handleSubCategoryClick(sub.name)}
-                className={`flex flex-col items-center min-w-[80px] transition-all ${
-                  selectedSubCategory === sub.name
-                    ? "opacity-100 scale-105"
-                    : "opacity-80 hover:opacity-100"
-                }`}
-              >
-                <div
-                  className="w-16 h-16 rounded-full overflow-hidden border-2 transition-colors"
-                  style={{
-                    borderColor:
-                      selectedSubCategory === sub.name
-                        ? activeAccentColor
-                        : "#E5E7EB",
-                  }}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={sub.image}
-                    alt={sub.name}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <span
-                  className="text-sm mt-2 font-medium"
-                  style={{
-                    color:
-                      selectedSubCategory === sub.name
-                        ? activeAccentColor
-                        : settings.fontColor,
-                    fontWeight: selectedSubCategory === sub.name ? 700 : 500,
-                  }}
-                >
-                  {t(sub.name)}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* فلتر المقاسات المصغر (يعمل منفرداً أو مع التصنيف الفرعي) */}
-        {availableSizes.length > 0 && (
-          <div className="mb-8 flex items-center gap-2 overflow-x-auto pb-2">
-            <span
-              className="text-xs sm:text-sm font-bold shrink-0 px-1"
-              style={{ color: settings.fontColor }}
-            >
-              📏 {isArabic ? "المقاس:" : "Size:"}
-            </span>
-
-            <button
-              type="button"
-              onClick={() => setSelectedSize(null)}
-              className="px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-bold border transition-all whitespace-nowrap shrink-0"
-              style={{
-                borderColor:
-                  selectedSize === null ? activeAccentColor : "#E5E7EB",
-                backgroundColor:
-                  selectedSize === null ? activeAccentColor : "#FFFFFF",
-                color: selectedSize === null ? "#FFFFFF" : settings.fontColor,
-              }}
-            >
-              {isArabic ? "الكل" : "All"}
-            </button>
-
-            {availableSizes.map((sizeLabel) => {
-              const isActive = selectedSize === sizeLabel;
-              const displayLabel = isArabic
-                ? sizeLabel
-                : SIZE_EN_LABELS[sizeLabel] || sizeLabel;
-
-              return (
+              {activeFiltersCount > 0 && (
                 <button
                   type="button"
-                  key={sizeLabel}
-                  onClick={() => handleSizeClick(sizeLabel)}
-                  className="px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-bold border transition-all whitespace-nowrap shrink-0"
-                  style={{
-                    borderColor: isActive ? activeAccentColor : "#E5E7EB",
-                    backgroundColor: isActive ? activeAccentColor : "#FFFFFF",
-                    color: isActive ? "#FFFFFF" : settings.fontColor,
-                  }}
+                  onClick={resetAllFilters}
+                  className="px-3 py-2 rounded-2xl text-xs font-extrabold bg-red-50 text-red-600 border border-red-200/80 hover:bg-red-100 transition-colors shrink-0"
                 >
-                  {displayLabel}
+                  {isArabic ? "مسح ✕" : "Clear ✕"}
                 </button>
-              );
-            })}
+              )}
+
+              {(leafSubCategories.length > 0 || availableSizes.length > 0) && (
+                <button
+                  type="button"
+                  onClick={() => setIsFiltersExpanded((prev) => !prev)}
+                  className="md:hidden px-3 py-2 rounded-2xl text-xs font-extrabold bg-white border border-gray-200 shadow-sm shrink-0 flex items-center gap-1"
+                  style={{ color: settings.fontColor }}
+                >
+                  <span>{isFiltersExpanded ? "▲" : "▼"}</span>
+                  <span>{isArabic ? "الفلاتر" : "Filters"}</span>
+                  {activeFiltersCount > 0 && (
+                    <span
+                      className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] text-white"
+                      style={{ backgroundColor: activeAccentColor }}
+                    >
+                      {activeFiltersCount}
+                    </span>
+                  )}
+                </button>
+              )}
+            </div>
+
+            {/* صفوف الفلاتر العائمة (النوع + المقاس) */}
+            {(leafSubCategories.length > 0 || availableSizes.length > 0) && (
+              <div
+                className={`${
+                  isFiltersExpanded ? "block" : "hidden md:block"
+                } space-y-2.5 pt-1 border-t border-gray-100`}
+              >
+                {/* 1. فلتر التصنيفات الفرعية كشرائح عائمة بصور مصغرة + أيقونة الكل */}
+                {leafSubCategories.length > 0 && (
+                  <div className="flex items-center gap-2 overflow-x-auto py-1">
+                    <span
+                      className="text-xs font-extrabold opacity-70 shrink-0 pl-1"
+                      style={{ color: settings.fontColor }}
+                    >
+                      {isArabic ? "النوع:" : "Type:"}
+                    </span>
+
+                    {/* زر الكل للتصنيفات الفرعية */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSubCategory(null)}
+                      className={`flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs sm:text-sm font-bold border transition-all whitespace-nowrap shrink-0 ${
+                        selectedSubCategory === null
+                          ? "shadow-md scale-[1.03]"
+                          : "bg-white/90 hover:bg-white shadow-sm hover:shadow"
+                      }`}
+                      style={{
+                        borderColor:
+                          selectedSubCategory === null
+                            ? activeAccentColor
+                            : "#E5E7EB",
+                        backgroundColor:
+                          selectedSubCategory === null
+                            ? activeAccentColor
+                            : undefined,
+                        color:
+                          selectedSubCategory === null
+                            ? "#FFFFFF"
+                            : settings.fontColor,
+                      }}
+                    >
+                      <span
+                        className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${
+                          selectedSubCategory === null
+                            ? "bg-white/25 text-white"
+                            : "bg-gray-100 text-gray-700"
+                        }`}
+                      >
+                        ✦
+                      </span>
+                      <span>{isArabic ? "الكل" : "All"}</span>
+                    </button>
+
+                    {leafSubCategories.map((sub: CategoryItem) => {
+                      const isActive = selectedSubCategory === sub.name;
+                      return (
+                        <button
+                          type="button"
+                          key={sub.id}
+                          onClick={() => handleSubCategoryClick(sub.name)}
+                          className={`flex items-center gap-2 rounded-full pl-3.5 pr-1.5 py-1 text-xs sm:text-sm font-bold border transition-all whitespace-nowrap shrink-0 ${
+                            isActive
+                              ? "shadow-md scale-[1.03]"
+                              : "bg-white/90 hover:bg-white shadow-sm hover:shadow"
+                          }`}
+                          style={{
+                            borderColor: isActive ? activeAccentColor : "#E5E7EB",
+                            backgroundColor: isActive
+                              ? activeAccentColor
+                              : undefined,
+                            color: isActive ? "#FFFFFF" : settings.fontColor,
+                          }}
+                        >
+                          <span className="w-7 h-7 rounded-full overflow-hidden border border-white/70 bg-gray-100 shrink-0">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={sub.image}
+                              alt={sub.name}
+                              className="w-full h-full object-cover"
+                            />
+                          </span>
+                          <span>{t(sub.name)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* 2. فلتر المقاسات المصغر العائم */}
+                {availableSizes.length > 0 && (
+                  <div className="flex items-center gap-2 overflow-x-auto py-0.5">
+                    <span
+                      className="text-xs font-extrabold opacity-70 shrink-0 pl-1"
+                      style={{ color: settings.fontColor }}
+                    >
+                      📏 {isArabic ? "المقاس:" : "Size:"}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSize(null)}
+                      className={`px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-bold border transition-all whitespace-nowrap shrink-0 ${
+                        selectedSize === null
+                          ? "shadow-md scale-[1.03]"
+                          : "bg-white/90 hover:bg-white shadow-sm hover:shadow"
+                      }`}
+                      style={{
+                        borderColor:
+                          selectedSize === null ? activeAccentColor : "#E5E7EB",
+                        backgroundColor:
+                          selectedSize === null ? activeAccentColor : undefined,
+                        color:
+                          selectedSize === null ? "#FFFFFF" : settings.fontColor,
+                      }}
+                    >
+                      {isArabic ? "الكل" : "All"}
+                    </button>
+
+                    {availableSizes.map((sizeLabel) => {
+                      const isActive = selectedSize === sizeLabel;
+                      const displayLabel = isArabic
+                        ? sizeLabel
+                        : SIZE_EN_LABELS[sizeLabel] || sizeLabel;
+
+                      return (
+                        <button
+                          type="button"
+                          key={sizeLabel}
+                          onClick={() => handleSizeClick(sizeLabel)}
+                          className={`px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-bold border transition-all whitespace-nowrap shrink-0 ${
+                            isActive
+                              ? "shadow-md scale-[1.03]"
+                              : "bg-white/90 hover:bg-white shadow-sm hover:shadow"
+                          }`}
+                          style={{
+                            borderColor: isActive ? activeAccentColor : "#E5E7EB",
+                            backgroundColor: isActive
+                              ? activeAccentColor
+                              : undefined,
+                            color: isActive ? "#FFFFFF" : settings.fontColor,
+                          }}
+                        >
+                          {displayLabel}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        )}
+        </div>
 
         {/* Products Grid */}
         {paginatedProducts.length > 0 ? (
@@ -507,22 +559,21 @@ export default function CategoryClient({
           </>
         ) : (
           <div className="text-center py-12 space-y-4">
-            <div
-              className="font-medium"
-              style={{ color: settings.fontColor }}
-            >
+            <div className="font-medium" style={{ color: settings.fontColor }}>
               {isArabic
                 ? "لا توجد منتجات مطابقة في هذا التصنيف"
                 : "No matching products in this category"}
             </div>
-            {(selectedSubCategory || selectedSize || searchTerm) && (
+            {activeFiltersCount > 0 && (
               <button
                 type="button"
                 onClick={resetAllFilters}
-                className="px-5 py-2 rounded-full text-sm font-bold text-white shadow-sm transition-opacity hover:opacity-90"
+                className="px-6 py-2.5 rounded-full text-sm font-bold text-white shadow-lg transition-all hover:scale-105"
                 style={{ backgroundColor: activeAccentColor }}
               >
-                {isArabic ? "عرض جميع المنتجات (إزالة الفلاتر)" : "Show All Products"}
+                {isArabic
+                  ? "عرض جميع المنتجات (إزالة الفلاتر)"
+                  : "Show All Products"}
               </button>
             )}
           </div>
